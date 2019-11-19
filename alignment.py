@@ -9,7 +9,7 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
     pass
 
 
-def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
+def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     pass
 
 
