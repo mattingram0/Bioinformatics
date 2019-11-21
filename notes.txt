@@ -18,3 +18,10 @@
 
 # Self = 0, Left = 1, Diag = 2, Up = 3
 # Relying on the order of code is poor form - not easily readable
+
+
+
+# When starting after dinner:
+   1. Check that the changed swapped normal code is right - i.e that we get the
+    correct score and the correct starting place
+   2. Fully test the recursive code - likely to be a lot of bugs
