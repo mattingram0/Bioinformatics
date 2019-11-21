@@ -17,4 +17,4 @@
 
 
 # Self = 0, Left = 1, Diag = 2, Up = 3
-# Relying on the order of code is poor form - not easily readible
+# Relying on the order of code is poor form - not easily readable
