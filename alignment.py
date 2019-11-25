@@ -11,14 +11,14 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     scoring_matrix = np.array(scoring_matrix)
     index = {i: alphabet.index(i) for i in alphabet}
     index['_'] = len(alphabet)
+    best_score = 0
     m = len(sequence1)
     n = len(sequence2)
 
     align_matrix = np.zeros(shape=(m + 1, n + 1))
     pointers = np.zeros(shape=(m + 1, n + 1))
 
-    # First row (handle explicitly in the case the scoring matrix is
-    # adversarial and assigns positive values for gaps)
+    # First row
     for i, l in enumerate(sequence1):
         score = max(
             0,
@@ -32,8 +32,7 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
 
         align_matrix[i + 1, 0] = score
 
-    # First column (handle explicitly in the case the scoring matrix is
-    # adversarial and assigns positive values for gaps)
+    # First column
     for j, k in enumerate(sequence2):
         score = max(
             0,
@@ -47,7 +46,7 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
 
         align_matrix[0, j + 1] = score
 
-    # Rest of matrix:
+    # Rest of the matrix:
     for i, l in enumerate(sequence1):
         for j, k in enumerate(sequence2):
             scores = np.array([
@@ -61,9 +60,13 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
                 # ^ Align letter in seq1 to a gap (add gap to seq2)
             ])
 
-            pointers[i + 1, j + 1] = scores.argmax()  # Poor coding style -
-            # relies on the order of the lines of code themselves
-            align_matrix[i + 1, j + 1] = scores.max()
+            score = scores.max()
+            pointers[i + 1, j + 1] = scores.argmax()  # Poor style
+
+            if score > best_score:
+                best_score = score
+
+            align_matrix[i + 1, j + 1] = score
 
     # Form the indices
     i, j = np.unravel_index(align_matrix.argmax(), align_matrix.shape)
@@ -90,18 +93,11 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     seq1_indices.reverse()
     seq2_indices.reverse()
 
-    # print("Final Matrix: ")
-    # print(align_matrix, "\n")
-    # print("Final Pointer Matrix")
-    # print(pointers)
-
     # TODO - sloppy - keep track of the max value during the algo itself
     return [align_matrix.max(), seq1_indices, seq2_indices]
 
 
 def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
-    # TODO - add the swap back of the sequences
-
     scoring_matrix = np.array(scoring_matrix)
     index = {i: alphabet.index(i) for i in alphabet}
     index['_'] = len(alphabet)
@@ -112,8 +108,7 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
     best_end = [0, 0]
     swapped = False
 
-    # Swap the sequences so that the longest sequence is always sequence 1,
-    # which is on the left of the matrix. i.e number of rows > no. of cols
+    # Ensure we use the smaller of the two to iterate through, reducing memory
     if m < n:
         temp = sequence1
         sequence1 = sequence2
@@ -123,24 +118,18 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
         n = temp
         swapped = True
 
-    # Iterate through the whole matrix, finding the maximum score and the
-    # starting position of the path that gives that score, in linear space
+    # Used to keep track of the score and start point throughout the matrix
     prev_start = [[0, i] for i in range(n + 1)]
     curr_start = [[0, i] for i in range(n + 1)]
     prev_row = np.zeros((1, n + 1))
     curr_row = np.zeros((1, n + 1))
 
-    # TODO - make sure the first row/column are correct - in the local
-    #  alignment case, the first row is always 0 only if the scoring matrix
-    #  is normal - if he feeds in a scoring matrix which gives positive
-    #  values for a skipped letter, then we may run into issues without the
-    #  following?
-    # prev_row[0, 0] = scoring_matrix[index['_'], index['_']]
+    # Take care of the initial row
     for j, k in enumerate(sequence2):
         prev_row[0, j + 1] = max(0, prev_row[0, j] + scoring_matrix[index[k]][
             index['_']])
 
-    # Rest of matrix:
+    # Iterate through the rest of matrix:
     for i, l in enumerate(sequence1):
         for j, k in enumerate(sequence2):
             left = curr_row[0, j] + scoring_matrix[index['_'], index[k]]
@@ -150,8 +139,6 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
             score = max(0, left, diag, up)
             curr_row[0, j + 1] = score
 
-            # TODO - start position is always one before it should be
-            # TODO - think solved this
             if score == left:
                 if curr_row[0, j] == 0:
                     curr_start[j + 1] = [i + 1, j + 1]
@@ -189,18 +176,18 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
         sequence1 = sequence2
         sequence2 = temp
 
-    # print("Best Start: ", best_start)
-    # print("Best End: ", best_end)
-
-    new_sequence1 = sequence1[max(best_start[0] - 1, 0): best_end[0]]
-    new_sequence2 = sequence2[max(best_start[1] - 1, 0): best_end[1]]
-
+    # Recursively break the matrix in half, finding the midpoint through
+    # which the optimal path passes through in that submatrix
     coords = [best_start] + dynproglin_recursive(alphabet, scoring_matrix,
-                                                 new_sequence1,
-                                                 new_sequence2,
+                                                 sequence1[
+                                                 max(best_start[0] - 1, 0):
+                                                 best_end[0]],
+                                                 sequence2[
+                                                 max(best_start[1] - 1, 0):
+                                                 best_end[1]],
                                                  best_start) + [best_end]
 
-    # Rebuild the alignment
+    # Rebuild the alignment indices from the coordinates
     seq1_indices = [coords[0][0] - 1]
     seq2_indices = [coords[0][1] - 1]
 
@@ -220,10 +207,10 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     index['_'] = len(alphabet)
     m = len(sequence1)
     n = len(sequence2)
-    best_start = [0, 0]
     best_score = 0
     swapped = False
 
+    # Ensure we use the smaller of the two to iterate through, reducing memory
     if m < n:
         temp = sequence1
         sequence1 = sequence2
@@ -233,37 +220,25 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         n = temp
         swapped = True
 
-    mid_col = int(floor(n/2)) + 1
+    mid_col = int(floor(n / 2)) + 1
 
     # Base cases:
     if len(sequence2) == 2 or len(sequence1) == 2:
         return []
 
-    if len(sequence2) == 2 and len(sequence1) == 2:
-        return []
-
-    if len(sequence2) == 2 and len(sequence1) == 1:
-        return []
-
-    if len(sequence2) == 1 and len(sequence1) == 2:
-        return []
-
     if len(sequence1) == 1 and len(sequence2) == 1:
-        a = 10
         return []
 
-    # For the middle values, we keep track of two numbers - when we enter
-    # the middle column and when we exit the middle column
+    # Used to keep track of on which row the middle column is joined and left
     prev_mid = [[0, 0] for i in range(n - mid_col + 1)]
     curr_mid = [[0, 0] for i in range(n - mid_col + 1)]
 
     prev_row = np.zeros((1, n + 1))
     curr_row = np.zeros((1, n + 1))
 
-    # Keep track of any vertical movement on the start and end too
+    # Used to keep track of on which row we leave the start & join the end cols
     prev_start = [0 for i in range(n + 1)]
     curr_start = [0 for i in range(n + 1)]
-    prev_end = 0
     curr_end = 0
 
     # TODO - ask LOUIS WHY WE DON'T NEED A ZERO HERE
@@ -283,51 +258,10 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
             diag = prev_row[0, j] + scoring_matrix[index[l], index[k]]
             up = prev_row[0, j + 1] + scoring_matrix[index[l], index['_']]
 
-            score = max(left, diag, up)  # Trying to find a global
-            # alignment now, so no 0 included
+            score = max(left, diag, up)
             curr_row[0, j + 1] = score
 
-            # We only need to keep track of the mid_value for the half of
-            # the matrix after the mid_col
-            if j >= mid_col - 1:
-                # If we are currently on the previous column to the middle:
-                # Keep track of when we joined the middle column
-                if j == mid_col - 1:
-                    if score == left or score == diag:
-                        curr_mid[0][0] = i + 1
-                    else:
-                        curr_mid[0][0] = prev_mid[0][0]
-
-                # If we are currently on the middle column
-                # Keep track of where we leave the middle column
-                elif j == mid_col:
-                    # If it came from the left, then curr_mid[j + 1] = i + 1
-                    # If it came from the diag, then curr_mid[j + 1] = i
-                    # If it came from above, then curr_mid[j + 1] = prev_mid[i + 1]
-                    if score == left:
-                        curr_mid[1] = [curr_mid[0][0], i + 1]  # Make note of
-                        # start and row of middle column that path traverses
-                    elif score == diag:
-                        curr_mid[1] = [prev_mid[0][0], i]
-                    else:
-                        curr_mid[1] = list(prev_mid[1])
-                # If we're not on the middle column, then propagate the
-                # middle along the path
-                else:
-                    if score == left:
-                        curr_mid[j - mid_col + 1] = list(curr_mid[j - mid_col])
-                    elif score == diag:
-                        curr_mid[j - mid_col + 1] = list(prev_mid[j - mid_col])
-                    else:
-                        curr_mid[j - mid_col + 1] = list(prev_mid[j - mid_col
-                                                                + 1])
-
-            # Keep track of any end movement
-            if j == n - 1:
-                if score == left or score == diag:
-                    curr_end = i + 1
-
-            # Keep track of any start movement:
+            # Keep track of when we leave the start column
             if j >= 1:
                 if score == left:
                     curr_start[j + 1] = curr_start[j]
@@ -336,20 +270,52 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
                 else:
                     curr_start[j + 1] = prev_start[j + 1]
 
+            # Keep track of when we join and leave the middle column
+            if j >= mid_col - 1:
+                # Joining the middle column
+                if j == mid_col - 1:
+                    if score == left or score == diag:
+                        curr_mid[0][0] = i + 1
+                    else:
+                        curr_mid[0][0] = prev_mid[0][0]
+
+                # Leaving the middle column
+                elif j == mid_col:
+                    if score == left:
+                        curr_mid[1] = [curr_mid[0][0], i + 1]
+                    elif score == diag:
+                        curr_mid[1] = [prev_mid[0][0], i]
+                    else:
+                        curr_mid[1] = list(prev_mid[1])
+
+                # Propagating the middle column coordinates
+                else:
+                    if score == left:
+                        curr_mid[j - mid_col + 1] = list(curr_mid[j - mid_col])
+                    elif score == diag:
+                        curr_mid[j - mid_col + 1] = list(prev_mid[j - mid_col])
+                    else:
+                        curr_mid[j - mid_col + 1] = list(prev_mid[j - mid_col
+                                                                  + 1])
+
+            # Keep track of when we join the final column
+            if j == n - 1:
+                if score == left or score == diag:
+                    curr_end = i + 1
+
+            # Keep track of best score
             if score > best_score:
                 best_score = score
-
 
         # Reset at end of row
         prev_row = curr_row
         curr_row = np.zeros((1, n + 1))
-
         prev_mid = curr_mid
         curr_mid = [[0, 0] for i in range(n - mid_col + 1)]
-
         prev_start = curr_start
         curr_start = [0 for p in range(n + 1)]
 
+    # Create the coordinates of the cells in the start, middle and end columns
     mid_points = []
     start_points = []
     end_points = []
@@ -363,7 +329,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     for i in range(prev_mid[n - mid_col][0], prev_mid[n - mid_col][1] + 1):
         mid_points.append([i, mid_col])
 
-    # Swap back
+    # If we swapped the sequences swap them back, and transpose all coordinates
     if swapped:
         temp = sequence1
         sequence1 = sequence2
@@ -372,13 +338,13 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         for point in start_points + mid_points + end_points:
             point.reverse()
 
+    # Split the two sequences into subsequences for the next recursive call
     seq1_head = sequence1[start_points[-1][0] - 1:mid_points[0][0]]
     seq2_head = sequence2[start_points[-1][1] - 1:mid_points[0][1]]
     seq1_tail = sequence1[mid_points[-1][0] - 1:end_points[0][0]]
     seq2_tail = sequence2[mid_points[-1][1] - 1:end_points[0][1]]
 
-    # Alter the mid point so that it is a midpoint of the total matrix,
-    # not just one of the sub matrix
+    # Convert the local coordinates to coordinates of the whole matrix
     real_mid_points = []
     real_start_points = []
     real_end_points = []
@@ -392,6 +358,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     for point in mid_points:
         real_mid_points.append([sum(x) - 1 for x in zip(start, point)])
 
+    # Find the midpoint of the smaller submatrices
     return real_start_points[1:] + dynproglin_recursive(
         alphabet, scoring_matrix, seq1_head,
         seq2_head, real_start_points[-1]
@@ -415,10 +382,11 @@ def main():
     # Print format options for numpy
     np.set_printoptions(edgeitems=20, linewidth=100000)
 
-    #dynprog(alphabet, scoring_matrix, seq1, seq2)
+    # Run the quadratic and linear space algorithms
     quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
     lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
 
+    # Print results
     print("Sequence 1: ", seq1)
     print("Sequence 2: ", seq2)
     print("Score (Quadratic): ", quad_results[0])
