@@ -1,5 +1,6 @@
 import numpy as np
 from math import floor
+from itertools import product
 import sys
 import ast
 
@@ -369,7 +370,66 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
 
 
 def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
-    pass
+    swapped = False
+    scoring_matrix = np.array(scoring_matrix)
+    index = {i: alphabet.index(i) for i in alphabet}
+    index['_'] = len(alphabet)
+    k_word_list = []
+
+    # BLAST Parameters
+    k = 3  # Length of the k-words
+    T = 5  # No. of high-scoring tuples to keep
+    # TODO assume scores are normally distributed and choose only the top 5%
+
+    # Swap sequences
+    if len(sequence1) < len(sequence2):
+        temp = sequence1
+        sequence1 = sequence2
+        sequence2 = temp
+        swapped = True
+
+    m = len(sequence1)
+    n = len(sequence2)
+
+    # Generate the k-word list
+    for i in range(n - k):
+        k_word_list.append(sequence2[i:i + k])
+
+    k_word_list = list(set(k_word_list))
+
+    # Generate the word neighbours
+    k_word_neighbours = {k: [] for k in k_word_list}
+    k_tuples = [''.join(i) for i in product(alphabet, repeat=3)]
+
+    for word in k_word_list:
+        for tup in k_tuples:
+            score = 0
+
+            for i in range(k):
+                score += scoring_matrix[index[word[i]], index[tup[i]]]
+
+            k_word_neighbours[word].append((tup, score))
+
+    # Keep only the best T k_word_neighbours of each k_tuple
+    for k, v in k_word_neighbours.items():
+        k_word_neighbours[k] = sorted(
+            v, key=lambda tup_score: tup_score[1]
+        )[-T:]
+
+    for i in range(n - k):
+        for j in range(m - k):
+            pass  # TODO YOU ARE HERE
+            # if sequence1[j: j + k] in k_word_neighbours[sequence2[i: i + k]]
+                # Make note of the (i, j) location and the score
+                # Also now make a dictionary of (i - j) : count, and choose
+                # the top however many diagonals to greedily expand.
+
+    # When expanding, expand in both directions. If the
+    # accumulated score ever goes negative, for one direction, stop
+    # Make note of the end (i', j') for that sequence.
+    # Each one needs to be a [(i, j), (i', j'), score] pair - does it?
+
+    return 0
 
 
 def main():
@@ -382,19 +442,22 @@ def main():
     # Print format options for numpy
     np.set_printoptions(edgeitems=20, linewidth=100000)
 
-    # Run the quadratic and linear space algorithms
-    quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
-    lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
+    # Run the heuristic alignment
+    heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
 
-    # Print results
-    print("Sequence 1: ", seq1)
-    print("Sequence 2: ", seq2)
-    print("Score (Quadratic): ", quad_results[0])
-    print("Score (Linear):    ", lin_results[0])
-    print("Sequence 1 Indices (Quadratic):", quad_results[1])
-    print("Sequence 1 Indices (Linear):   ", lin_results[1])
-    print("Sequence 2 Indices (Quadratic):", quad_results[2])
-    print("Sequence 2 Indices (Linear):   ", lin_results[2])
+    # # Run the quadratic and linear space algorithms
+    # quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
+    # lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
+    #
+    # # Print results
+    # print("Sequence 1: ", seq1)
+    # print("Sequence 2: ", seq2)
+    # print("Score (Quadratic): ", quad_results[0])
+    # print("Score (Linear):    ", lin_results[0])
+    # print("Sequence 1 Indices (Quadratic):", quad_results[1])
+    # print("Sequence 1 Indices (Linear):   ", lin_results[1])
+    # print("Sequence 2 Indices (Quadratic):", quad_results[2])
+    # print("Sequence 2 Indices (Linear):   ", lin_results[2])
 
 
 if __name__ == "__main__":
