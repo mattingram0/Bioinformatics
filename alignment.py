@@ -224,6 +224,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     if len(sequence2) == 2 or len(sequence1) == 2:
         return []
 
+    # TODO POTENTIAL BUG
     if len(sequence1) == 1 and len(sequence2) == 1:
         return []
 
@@ -236,6 +237,8 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
 
     # Used to keep track of on which row we leave the start & join the end cols
     prev_start = [0] * (n + 1)
+    prev_start[0] = 1  # TODO POTENTIAL BUG
+    prev_start[1] = 1
     curr_start = [0] * (n + 1)
     curr_end = 0
 
@@ -250,7 +253,9 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         # TODO - ADD THIS LINE TO THE LOCAL INITIAL RUN - CANNOT ASSUME THAT
         #  THE SCORING MATRIX WILL BE NICE
         curr_row[0, 0] = prev_row[0, 0] + scoring_matrix[index[l]][index['_']]
-        curr_start[1] = i + 1
+
+        curr_start[0] = i + 1
+        curr_start[1] = i + 1  # TODO - POTENTIAL BUG
         for j, k in enumerate(sequence2):
             left = curr_row[0, j] + scoring_matrix[index['_'], index[k]]
             diag = prev_row[0, j] + scoring_matrix[index[l], index[k]]
@@ -259,8 +264,16 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
             score = max(left, diag, up)
             curr_row[0, j + 1] = score
 
-            # Keep track of when we leave the start column
-            if j >= 1:
+            # Keep track of when we leave the start column TODO U R HERE
+            if j == 1:
+                if score == left:
+                    curr_start[j + 1] = i + 1
+                elif score == diag:
+                    curr_start[j + 1] = i
+                else:
+                    curr_start[j + 1] = prev_start[j + 1]
+
+            if j > 1:
                 if score == left:
                     curr_start[j + 1] = curr_start[j]
                 elif score == diag:
@@ -312,13 +325,14 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         curr_mid = [[0, 0]] * (n - mid_col + 1)
         prev_start = curr_start
         curr_start = [0] * (n + 1)
+        a = 10
 
     # Create the coordinates of the cells in the start, middle and end columns
     mid_points = []
     start_points = []
     end_points = []
 
-    for i in range(1, prev_start[n] + 1):
+    for i in range(1, prev_start[n] + 1):  # TODO BUG HERE???
         start_points.append([i, 1])
 
     for i in range(curr_end, m + 1):
@@ -356,6 +370,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     for point in mid_points:
         real_mid_points.append([sum(x) - 1 for x in zip(start, point)])
 
+    a = 10
     # Find the midpoint of the smaller sub-matrices
     return real_start_points[1:] + dynproglin_recursive(
         alphabet, scoring_matrix, seq1_head,
@@ -379,7 +394,8 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
     best_final_score = 0  # Holds the final best score
 
     # Banded DP Parameters
-    b = max(int(0.1 * len(sequence2)), 5)  # Width of the band TODO CHANGE BACK
+    b = max(int(0.1 * len(sequence2)), 10)  # Width of the band TODO CHANGE
+    # BACK
     h = 10  # Number of iterations of banded dp to run
 
     # Convert the seeds dict to a list of HSPs, sorted by score
@@ -659,6 +675,35 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     )
 
 
+def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
+                  indices2, calc_score):
+    scoring_matrix = np.array(scoring_matrix)
+    index = {i: alphabet.index(i) for i in alphabet}
+    index['_'] = len(alphabet)
+
+    score = 0
+    x, y = indices1[0], indices2[0]
+
+    for c in range(len(indices1)):
+        i = indices1[c]
+        j = indices2[c]
+
+        while x < i:
+            score += scoring_matrix[index[sequence1[x]], index['_']]
+            x += 1
+
+        while y < j:
+            score += scoring_matrix[index[sequence2[y]], index['_']]
+            y += 1
+
+        score += scoring_matrix[index[sequence1[i]], index[sequence2[j]]]
+        x += 1
+        y += 1
+
+    print(score)
+    print(score == calc_score)
+
+
 def main():
     # Parse Input
     alphabet = sys.argv[1]
@@ -669,25 +714,26 @@ def main():
     # Print format options for numpy
     np.set_printoptions(edgeitems=20, linewidth=100000)
 
-    # Run the heuristic alignment
-    heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
-    print(heur_results)
-    print()
-
-    # # Run the quadratic and linear space algorithms
+    # Run the three algorithms
     quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
-    print(quad_results)
-    # lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
-    #
-    # # Print results
-    # print("Sequence 1: ", seq1)
-    # print("Sequence 2: ", seq2)
-    # print("Score (Quadratic): ", quad_results[0])
-    # print("Score (Linear):    ", lin_results[0])
-    # print("Sequence 1 Indices (Quadratic):", quad_results[1])
-    # print("Sequence 1 Indices (Linear):   ", lin_results[1])
-    # print("Sequence 2 Indices (Quadratic):", quad_results[2])
-    # print("Sequence 2 Indices (Linear):   ", lin_results[2])
+    lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
+    heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
+
+    # Print results thes
+    print("Sequence 1: ", seq1)
+    print("Sequence 2: ", seq2)
+    print("Score (Quadratic): ", quad_results[0])
+    print("Score (Linear):    ", lin_results[0])
+    print("Score (Heuristic): ", heur_results[0])
+    print("Sequence 1 Indices (Quadratic):", quad_results[1])
+    print("Sequence 1 Indices (Linear):   ", lin_results[1])
+    print("Sequence 1 Indices (Heuristic):", heur_results[1])
+    print("Sequence 2 Indices (Quadratic):", quad_results[2])
+    print("Sequence 2 Indices (Linear):   ", lin_results[2])
+    print("Sequence 2 Indices (Heuristic):", heur_results[2])
+
+    check_indices(alphabet, scoring_matrix, seq1, seq2, heur_results[1],
+                  heur_results[2], heur_results[0])
 
     # TODO - memory management for part 2 if time - deleting/reassigning
     #  variables etc
