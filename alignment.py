@@ -52,7 +52,7 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
         for j, k in enumerate(sequence2):
             scores = np.array([
                 0,
-                # ^ Start a new subsequence
+                # ^ Start a new sub-sequence
                 align_matrix[i + 1, j] + scoring_matrix[index['_'], index[k]],
                 # ^ Align letter in seq2 to a gap (add gap to seq1)
                 align_matrix[i, j] + scoring_matrix[index[l], index[k]],
@@ -94,7 +94,7 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     seq1_indices.reverse()
     seq2_indices.reverse()
 
-    # TODO - sloppy - keep track of the max value during the algo itself
+    # TODO - sloppy - keep track of the max value during the algorithm itself
     return [align_matrix.max(), seq1_indices, seq2_indices]
 
 
@@ -114,9 +114,7 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
         temp = sequence1
         sequence1 = sequence2
         sequence2 = temp
-        temp = m
-        m = n
-        n = temp
+        n = m
         swapped = True
 
     # Used to keep track of the score and start point throughout the matrix
@@ -167,7 +165,7 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
 
         prev_start = curr_start
         prev_start[0] = [i + 1, 0]
-        curr_start = [[0, 0] for i in range(n + 1)]
+        curr_start = [[0, 0]] * (n + 1)
 
     # Swap back if we swapped the sequences
     if swapped:
@@ -178,15 +176,14 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
         sequence2 = temp
 
     # Recursively break the matrix in half, finding the midpoint through
-    # which the optimal path passes through in that submatrix
-    coords = [best_start] + dynproglin_recursive(alphabet, scoring_matrix,
-                                                 sequence1[
-                                                 max(best_start[0] - 1, 0):
-                                                 best_end[0]],
-                                                 sequence2[
-                                                 max(best_start[1] - 1, 0):
-                                                 best_end[1]],
-                                                 best_start) + [best_end]
+    # which the optimal path passes through in that sub-matrix
+    coords = [best_start] + dynproglin_recursive(
+        alphabet,
+        scoring_matrix,
+        sequence1[max(best_start[0] - 1, 0):best_end[0]],
+        sequence2[max(best_start[1] - 1, 0):best_end[1]],
+        best_start
+    ) + [best_end]
 
     # Rebuild the alignment indices from the coordinates
     seq1_indices = [coords[0][0] - 1]
@@ -231,15 +228,15 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         return []
 
     # Used to keep track of on which row the middle column is joined and left
-    prev_mid = [[0, 0] for i in range(n - mid_col + 1)]
-    curr_mid = [[0, 0] for i in range(n - mid_col + 1)]
+    prev_mid = [[0, 0]] * (n - mid_col + 1)
+    curr_mid = [[0, 0]] * (n - mid_col + 1)
 
     prev_row = np.zeros((1, n + 1))
     curr_row = np.zeros((1, n + 1))
 
     # Used to keep track of on which row we leave the start & join the end cols
-    prev_start = [0 for i in range(n + 1)]
-    curr_start = [0 for i in range(n + 1)]
+    prev_start = [0] * (n + 1)
+    curr_start = [0] * (n + 1)
     curr_end = 0
 
     # TODO - ask LOUIS WHY WE DON'T NEED A ZERO HERE
@@ -312,9 +309,9 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         prev_row = curr_row
         curr_row = np.zeros((1, n + 1))
         prev_mid = curr_mid
-        curr_mid = [[0, 0] for i in range(n - mid_col + 1)]
+        curr_mid = [[0, 0]] * (n - mid_col + 1)
         prev_start = curr_start
-        curr_start = [0 for p in range(n + 1)]
+        curr_start = [0] * (n + 1)
 
     # Create the coordinates of the cells in the start, middle and end columns
     mid_points = []
@@ -339,7 +336,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         for point in start_points + mid_points + end_points:
             point.reverse()
 
-    # Split the two sequences into subsequences for the next recursive call
+    # Split the two sequences into sub-sequences for the next recursive call
     seq1_head = sequence1[start_points[-1][0] - 1:mid_points[0][0]]
     seq2_head = sequence2[start_points[-1][1] - 1:mid_points[0][1]]
     seq1_tail = sequence1[mid_points[-1][0] - 1:end_points[0][0]]
@@ -359,7 +356,7 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     for point in mid_points:
         real_mid_points.append([sum(x) - 1 for x in zip(start, point)])
 
-    # Find the midpoint of the smaller submatrices
+    # Find the midpoint of the smaller sub-matrices
     return real_start_points[1:] + dynproglin_recursive(
         alphabet, scoring_matrix, seq1_head,
         seq2_head, real_start_points[-1]
@@ -368,26 +365,28 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         seq2_tail, real_mid_points[-1]
     ) + real_end_points[:-1]
 
-def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
+
+def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
+                   swapped):
     scoring_matrix = np.array(scoring_matrix)
     index = {i: alphabet.index(i) for i in alphabet}
     index['_'] = len(alphabet)
-    best_score = 0
     m = len(sequence1)
     n = len(sequence2)
+    best_path_score = 0  # Holds the score of the best path in current DP iter
+    best_align_matrix = []
+    best_pointer_matrix = []
+    best_final_score = 0  # Holds the final best score
 
     # Banded DP Parameters
-    b = min(15, len(sequence2), len(sequence1))  # Width of the band
-    h = 15  # Number of iterations of banded dp to run
+    b = max(int(0.1 * len(sequence2)), 5)  # Width of the band TODO CHANGE BACK
+    h = 10  # Number of iterations of banded dp to run
 
     # Convert the seeds dict to a list of HSPs, sorted by score
     hsps = sorted(
         [hsp for hsp_list in seeds.values() for hsp in hsp_list],
         key=lambda hsp_tup: hsp_tup[2]
     )[-h:]
-
-    align_matrix = np.zeros(shape=(m + 1, n + 1))
-    pointers = np.zeros(shape=(m + 1, n + 1))
 
     for hsp in hsps:
         diag = hsp[0][1] - hsp[1][1]
@@ -397,20 +396,6 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
         pointers = np.zeros(shape=(m + 1, n + 1))
 
         # First row
-        for i, l in enumerate(sequence1):
-            score = max(
-                0,
-                align_matrix[i, 0] + scoring_matrix[index[l]][index['_']]
-            )
-
-            if score == 0:
-                pointers[i + 1, 0] = 0
-            else:
-                pointers[i + 1, 0] = 1
-
-            align_matrix[i + 1, 0] = score
-
-        # First column
         for j, k in enumerate(sequence2):
             score = max(
                 0,
@@ -420,20 +405,34 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
             if score == 0:
                 pointers[0, j + 1] = 0
             else:
-                pointers[0, j + 1] = 3
+                pointers[0, j + 1] = 1
 
             align_matrix[0, j + 1] = score
+
+        # First column
+        for i, l in enumerate(sequence1):
+            score = max(
+                0,
+                align_matrix[i, 0] + scoring_matrix[index[l]][index['_']]
+            )
+
+            if score == 0:
+                pointers[i + 1, 0] = 0
+            else:
+                pointers[i + 1, 0] = 3
+
+            align_matrix[i + 1, 0] = score
 
         # Rest of the matrix:
         for i, l in enumerate(sequence1):
             for j, k in enumerate(sequence2):
                 i_range = range(
                     max(0, j - diag - b - 1),
-                    min(m - 1, j - diag + b + 1)
+                    min(m, j - diag + b + 1)
                 )
                 j_range = range(
                     max(0, i + diag - b - 1),
-                    min(n - 1, i + diag + b + 1)
+                    min(n, i + diag + b + 1)
                 )
 
                 # Continue only if in the band
@@ -473,20 +472,27 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
                 score = scores.max()
                 pointers[i + 1, j + 1] = scores.argmax()  # Poor style
 
-                if score > best_score:
-                    best_score = score
+                if score > best_path_score:
+                    best_path_score = score
 
                 align_matrix[i + 1, j + 1] = score
 
+        if best_path_score > best_final_score:
+            best_final_score = best_path_score
+            best_align_matrix = align_matrix
+            best_pointer_matrix = pointers
+
     # Form the indices
-    i, j = np.unravel_index(align_matrix.argmax(), align_matrix.shape)
-    direction = pointers[i, j]
+    i, j = np.unravel_index(
+        best_align_matrix.argmax(),
+        best_align_matrix.shape
+    )
+    direction = best_pointer_matrix[i, j]
     seq1_indices = []
     seq2_indices = []
 
     # Need to handle the case where the maximum is 0 and there isn't a
     # previous direction?
-
     while direction != 0:
         if direction == 1:
             j = j - 1
@@ -498,12 +504,15 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
         else:
             i = i - 1
 
-        direction = pointers[i, j]
+        direction = best_pointer_matrix[i, j]
 
     seq1_indices.reverse()
     seq2_indices.reverse()
 
-    return [align_matrix.max(), seq1_indices, seq2_indices]
+    if swapped:
+        return [best_final_score, seq2_indices, seq1_indices]
+    else:
+        return [best_final_score, seq1_indices, seq2_indices]
 
 
 def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
@@ -532,7 +541,7 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
 
     # This outer while loop is necessary, as for small sequences we may end
     # up in the case where a length of 3 for our k-words
-    while len(seeds) == 0:  #TODO - check the base case of k = 0
+    while len(seeds) == 0:  # TODO - check the base case of k = 0
         k_word_list = []
         # Generate the k-word list
         for i in range(n - k):
@@ -557,7 +566,8 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
                 k_word_neighbours[word].append((tup, score))
 
         # Keep only the best T k_word_neighbours of each k_tuple, then convert
-        # each [('b', score1), ('c': score2)] into [('b', 'c'), (score1, score2)]
+        # each [('b', score1), ('c': score2)] into [('b', 'c'),
+        # (score1, score2)]
         for key, val in k_word_neighbours.items():
             k_word_neighbours[key] = list(
                 zip(*sorted(val, key=lambda tup_score: tup_score[1])[-t:])
@@ -582,8 +592,9 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
                     ]
 
                     # TODO - keep track of highest scoring seed, and make sure
-                    #  that we manually extend this one and dynamic progam it,
-                    #  in the case it is an isolated match on a diag which is long
+                    #  that we manually extend this one and dynamic program it,
+                    #  in the case it is an isolated match on a diag which is
+                    #  long
 
                 except ValueError:
                     continue
@@ -644,7 +655,7 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
             # Delete diagonal from the
 
     return dynprog_banded(
-        alphabet, scoring_matrix, sequence1, sequence2, seeds
+        alphabet, scoring_matrix, sequence1, sequence2, seeds, swapped
     )
 
 
@@ -661,9 +672,11 @@ def main():
     # Run the heuristic alignment
     heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
     print(heur_results)
+    print()
 
     # # Run the quadratic and linear space algorithms
-    # quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
+    quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
+    print(quad_results)
     # lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
     #
     # # Print results
