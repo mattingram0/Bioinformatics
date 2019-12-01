@@ -368,18 +368,155 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
         seq2_tail, real_mid_points[-1]
     ) + real_end_points[:-1]
 
+def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds):
+    scoring_matrix = np.array(scoring_matrix)
+    index = {i: alphabet.index(i) for i in alphabet}
+    index['_'] = len(alphabet)
+    best_score = 0
+    m = len(sequence1)
+    n = len(sequence2)
+
+    # Banded DP Parameters
+    b = min(15, len(sequence2), len(sequence1))  # Width of the band
+    h = 15  # Number of iterations of banded dp to run
+
+    # Convert the seeds dict to a list of HSPs, sorted by score
+    hsps = sorted(
+        [hsp for hsp_list in seeds.values() for hsp in hsp_list],
+        key=lambda hsp_tup: hsp_tup[2]
+    )[-h:]
+
+    align_matrix = np.zeros(shape=(m + 1, n + 1))
+    pointers = np.zeros(shape=(m + 1, n + 1))
+
+    for hsp in hsps:
+        diag = hsp[0][1] - hsp[1][1]
+
+        # TODO 3: Stop being lazy and improve the amount of space used
+        align_matrix = np.zeros(shape=(m + 1, n + 1))
+        pointers = np.zeros(shape=(m + 1, n + 1))
+
+        # First row
+        for i, l in enumerate(sequence1):
+            score = max(
+                0,
+                align_matrix[i, 0] + scoring_matrix[index[l]][index['_']]
+            )
+
+            if score == 0:
+                pointers[i + 1, 0] = 0
+            else:
+                pointers[i + 1, 0] = 1
+
+            align_matrix[i + 1, 0] = score
+
+        # First column
+        for j, k in enumerate(sequence2):
+            score = max(
+                0,
+                align_matrix[0, j] + scoring_matrix[index[k]][index['_']]
+            )
+
+            if score == 0:
+                pointers[0, j + 1] = 0
+            else:
+                pointers[0, j + 1] = 3
+
+            align_matrix[0, j + 1] = score
+
+        # Rest of the matrix:
+        for i, l in enumerate(sequence1):
+            for j, k in enumerate(sequence2):
+                i_range = range(
+                    max(0, j - diag - b - 1),
+                    min(m - 1, j - diag + b + 1)
+                )
+                j_range = range(
+                    max(0, i + diag - b - 1),
+                    min(n - 1, i + diag + b + 1)
+                )
+
+                # Continue only if in the band
+                if i not in i_range or j not in j_range:
+                    continue
+
+                # On the top boundary of the band
+                if i == (j - diag + b) and j == (i + diag + b):
+                    scores = np.array([
+                        0,
+                        align_matrix[i + 1, j] + scoring_matrix[
+                            index['_'], index[k]],
+                        align_matrix[i, j] + scoring_matrix[
+                            index[l], index[k]],
+                    ])
+
+                # On the bottom boundary of the band
+                elif i == (j - diag - b) and j == (i + diag - b):
+                    scores = np.array([
+                        0,
+                        align_matrix[i, j] + scoring_matrix[
+                            index[l], index[k]],
+                        align_matrix[i, j + 1] + scoring_matrix[
+                            index[l], index['_']]
+                    ])
+                else:
+                    scores = np.array([
+                        0,
+                        align_matrix[i + 1, j] + scoring_matrix[
+                            index['_'], index[k]],
+                        align_matrix[i, j] + scoring_matrix[
+                            index[l], index[k]],
+                        align_matrix[i, j + 1] + scoring_matrix[
+                            index[l], index['_']]
+                    ])
+
+                score = scores.max()
+                pointers[i + 1, j + 1] = scores.argmax()  # Poor style
+
+                if score > best_score:
+                    best_score = score
+
+                align_matrix[i + 1, j + 1] = score
+
+    # Form the indices
+    i, j = np.unravel_index(align_matrix.argmax(), align_matrix.shape)
+    direction = pointers[i, j]
+    seq1_indices = []
+    seq2_indices = []
+
+    # Need to handle the case where the maximum is 0 and there isn't a
+    # previous direction?
+
+    while direction != 0:
+        if direction == 1:
+            j = j - 1
+        elif direction == 2:
+            seq1_indices.append(i - 1)
+            seq2_indices.append(j - 1)
+            i = i - 1
+            j = j - 1
+        else:
+            i = i - 1
+
+        direction = pointers[i, j]
+
+    seq1_indices.reverse()
+    seq2_indices.reverse()
+
+    return [align_matrix.max(), seq1_indices, seq2_indices]
+
 
 def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     swapped = False
     scoring_matrix = np.array(scoring_matrix)
     index = {i: alphabet.index(i) for i in alphabet}
     index['_'] = len(alphabet)
-    k_word_list = []
 
     # BLAST Parameters
     k = 3  # Length of the k-words
-    T = 5  # No. of high-scoring tuples to keep
+    t = 10  # No. of high-scoring tuples to keep
     # TODO assume scores are normally distributed and choose only the top 5%
+    e = 3  # Extension threshold
 
     # Swap sequences
     if len(sequence1) < len(sequence2):
@@ -391,45 +528,124 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     m = len(sequence1)
     n = len(sequence2)
 
-    # Generate the k-word list
-    for i in range(n - k):
-        k_word_list.append(sequence2[i:i + k])
+    seeds = {}
 
-    k_word_list = list(set(k_word_list))
+    # This outer while loop is necessary, as for small sequences we may end
+    # up in the case where a length of 3 for our k-words
+    while len(seeds) == 0:  #TODO - check the base case of k = 0
+        k_word_list = []
+        # Generate the k-word list
+        for i in range(n - k):
+            k_word_list.append(sequence2[i:i + k])
 
-    # Generate the word neighbours
-    k_word_neighbours = {k: [] for k in k_word_list}
-    k_tuples = [''.join(i) for i in product(alphabet, repeat=3)]
+        k_word_list = list(set(k_word_list))
 
-    for word in k_word_list:
-        for tup in k_tuples:
-            score = 0
+        # Generate the word neighbours
+        k_word_neighbours = {k: [] for k in k_word_list}
+        k_tuples = [''.join(i) for i in product(alphabet, repeat=k)]
+        for word in k_word_list:
+            for tup in k_tuples:
+                score = 0
 
-            for i in range(k):
-                score += scoring_matrix[index[word[i]], index[tup[i]]]
+                for i in range(k):
+                    score += scoring_matrix[index[word[i]], index[tup[i]]]
 
-            k_word_neighbours[word].append((tup, score))
+                # TODO 1: See if removing this makes a difference
+                if score <= 0:
+                    continue
 
-    # Keep only the best T k_word_neighbours of each k_tuple
-    for k, v in k_word_neighbours.items():
-        k_word_neighbours[k] = sorted(
-            v, key=lambda tup_score: tup_score[1]
-        )[-T:]
+                k_word_neighbours[word].append((tup, score))
 
-    for i in range(n - k):
-        for j in range(m - k):
-            pass  # TODO YOU ARE HERE
-            # if sequence1[j: j + k] in k_word_neighbours[sequence2[i: i + k]]
-                # Make note of the (i, j) location and the score
-                # Also now make a dictionary of (i - j) : count, and choose
-                # the top however many diagonals to greedily expand.
+        # Keep only the best T k_word_neighbours of each k_tuple, then convert
+        # each [('b', score1), ('c': score2)] into [('b', 'c'), (score1, score2)]
+        for key, val in k_word_neighbours.items():
+            k_word_neighbours[key] = list(
+                zip(*sorted(val, key=lambda tup_score: tup_score[1])[-t:])
+            )
 
-    # When expanding, expand in both directions. If the
-    # accumulated score ever goes negative, for one direction, stop
-    # Make note of the end (i', j') for that sequence.
-    # Each one needs to be a [(i, j), (i', j'), score] pair - does it?
+        # Generate the dict of seeds, indexed by (i - j). {(i - j): [[(i1, j1),
+        # score1], [(i2, j2), score2], ... ], (i' - j'): [ ... ], ...}
+        for j in range(n - k):
+            for i in range(m - k):
+                try:
+                    query = sequence1[i: i + k]
+                    target = sequence2[j: j + k]
 
-    return 0
+                    k_word_list_score = k_word_neighbours[target]
+                    k_word_list = k_word_list_score[0]
+
+                    ind = k_word_list.index(query)
+                    score = k_word_neighbours[target][1][ind]
+
+                    seeds[j - i] = seeds.get(j - i, []) + [
+                        [(i, j), (i + k - 1, j + k - 1), score]
+                    ]
+
+                    # TODO - keep track of highest scoring seed, and make sure
+                    #  that we manually extend this one and dynamic progam it,
+                    #  in the case it is an isolated match on a diag which is long
+
+                except ValueError:
+                    continue
+
+        k -= 1
+
+    k += 1
+    # Extend the seeds along the diagonals with a sufficiently large number
+    # of matches, giving us our High Scoring Pairs (HSPs)
+    for key, val in seeds.items():
+        if len(val) > e:
+            for seed in val:
+                left_score = 0
+                right_score = 0
+                score = 0
+
+                # TODO 2: Add the check for a single gap heuristic
+                # Try extend left:
+                i, j = seed[0]
+                while score >= 0 and i > 0 and j > 0:
+                    score = scoring_matrix[
+                        index[sequence1[i - 1]],
+                        index[sequence2[j - 1]]
+                    ]
+
+                    i -= 1
+                    j -= 1
+                    left_score += score
+
+                # New starting coordinates and left_score
+                seed[0] = (i + 1, j + 1)
+                left_score -= score
+
+                # Try extend right:
+                i, j = seed[1]
+                score = 0
+                while score >= 0 and i < m - 1 and j < n - 1:
+                    score = scoring_matrix[
+                        index[sequence1[i + 1]],
+                        index[sequence2[j + 1]]
+                    ]
+
+                    i += 1
+                    j += 1
+                    right_score += score
+
+                # New end coordinates and right_score
+                seed[1] = (i - 1, j - 1)
+                right_score -= score
+
+                # Update overall score
+                seed[2] = seed[2] + left_score + right_score
+
+        else:
+            # TODO - handle the case where there aren't any which pass the
+            #  extension threshold
+            continue
+            # Delete diagonal from the
+
+    return dynprog_banded(
+        alphabet, scoring_matrix, sequence1, sequence2, seeds
+    )
 
 
 def main():
@@ -444,6 +660,7 @@ def main():
 
     # Run the heuristic alignment
     heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
+    print(heur_results)
 
     # # Run the quadratic and linear space algorithms
     # quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
@@ -458,6 +675,9 @@ def main():
     # print("Sequence 1 Indices (Linear):   ", lin_results[1])
     # print("Sequence 2 Indices (Quadratic):", quad_results[2])
     # print("Sequence 2 Indices (Linear):   ", lin_results[2])
+
+    # TODO - memory management for part 2 if time - deleting/reassigning
+    #  variables etc
 
 
 if __name__ == "__main__":
