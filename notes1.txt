@@ -1,0 +1,204 @@
+# Example indices alignment
+# 012345
+# ABCACA
+
+# 01234
+# BAACB
+
+# The alignment
+# ABCA_CA
+# _B_AACB
+# is then represented by
+# [1, 3, 4, 5], [0, 1, 3, 4]
+# because the '1st' letter (0-indexed) of the first string matches with the
+# 0th of the second string, the 3rd of the first matches with the 1st of the
+# second, ..., and then the 5th of the first MIS-matches with the 4th of the
+# second - i.e both matches and mismatches are written down but indels are not
+
+
+# Self = 0, Left = 1, Diag = 2, Up = 3
+# Relying on the order of code is poor form - not easily readable
+
+
+
+# When starting after dinner:
+   1. Check that the changed swapped normal code is right - i.e that we get the
+    correct score and the correct starting place
+   2. Fully test the recursive code - likely to be a lot of bugs
+
+
+                 if j == mid_col - 1:
+                    if score == left:
+                        curr_mid[0][0] = i + 1
+                    elif score == diag:
+                        curr_mid[0][0] = i
+                    else:
+                        curr_mid[0][0] = prev_mid[0][0]
+
+# Heuristic Alignment
+# Try to find gapless alignments, and then extend (join them)
+
+# FASTA - searching using lookup tables
+   1. Identify local substring diagonals (i.e small amounts of local
+   alignment)
+   2. Perform banded dynamic programming along these diagonals
+
+# 1. Identifying Potential Diagonals
+    - Assume that high scoring gap-less alignments contain several 'seeds' of
+    perfect matches
+    - Since this is a gap-less alignment, all perfect match regions reside on
+    the same diagonal, defined by (i - j = k)
+    - So how do we find the seeds efficiently? We assume there is a parameter
+    KTUP which denotes the seed length of interest - therefore we need to find
+    all the start positions (i, j) of seeds - i.e all the pairs (i, j) such
+    that s[i: i + KTUP - 1] = t[j: j + KTUP - 1]
+    - (Assume |S| (Database) >> |T| (search))
+    - We locate all pairs (i, j) that are on the same diagonal - that is, find
+    all (i, j) that are the beginning of 'seeds', and then sort the (i, j) by
+    their difference (i - j) = k, as this
+    - To find the seeds efficiently, we linearly pass through the database
+    string S, and we create an index table containg the start position(s) of
+    every KTUP-length string in S. We then linearly pass through the search
+    string T, and at every position look KTUP positions ahead, and see if that
+    seed is present in the index table, and if so make a note of the
+    corresponding starting position in S
+    - Typical values of KTUP: 1 - 2 for Proteings, 4 - 6 fod DNA. The index
+    table is prepared for each database sequence ahead of users' matching
+    requests
+
+ # 2. Banded Dynamic Programming
+    - For every diagonal which has a high frequency of matches, extend seeds
+    greedily into longer diagonal matches (so long as the score improves and
+    never goes below some score values) - i.e JOIN diagonals.
+    - We then score each of the diagonals using our normal scoring matrix. We
+    list the highest scoring diagonal matches only, and then perform banded
+    dynamic programming along these diagonals.
+    - The algorithm may then combine some diagonals into gapped matches
+    - Higher values of KTUP yield fewer potential diagonals and so to search
+    around using DP is faster - however, the chance to miss an optimal local
+    alignment is increased
+
+- Heuristic
+- At least 50 times faster than SSEARCH
+- Not as sensitive. The final DP step makes it more sensitive, but less
+selective
+
+# BLAST - searching using lookup tables
+    * Based on similar ideas to FASTA, except it looks for high-scoring pairs
+    rather than exact k tuples as seeds
+    * Uses an established statistical framework to determine thresholds.
+    PSI-BLAST (Position Specific Iterated) is state of the art:
+        - Performs BLAST on a database
+        - Uses significant alignments to contruct a position specific scoring
+        matrix
+        - This matrix is used in the next round of database searching until no
+        new signigicant alignments are found
+
+    * Two strings u and v of length K are a high scoring pair (HSP) if d(u, v)
+     > T, where T is some threshold value and is a parameter to for the
+     algorithm. We usually consider only ungapped alignments only
+
+     1. Find high scoring pairs of substrings such that d(u, v) > T - these
+     words serve as seeds for finding longer matched
+     2. Extend to ungapped diagonals as in FASTA
+     3. Extend to gapped matches using banded dyanmic programming
+
+1. Finding HSP
+    * Find all strings of length k which score at least T (threshold) with
+    substrings of t (the search query) in a gapless alignent. k = 4 for
+    proteins, 11 for DNA. Not all k-words must be tested (e.g when such a word
+    scores less than T itself).
+        - So for every substring of t (our search query), find all the strings
+        of length K such that have a score at least T. These are the the high
+        scoring pairs (HSPs), and sometimes referred to as the neighbourhood
+        strings of a given string of t.
+    * Find in s (database string) all exact matches with each of the above
+    strings
+        - So for each of the 3-tuple, we make a lookup table containing all of
+        the location of the the
+2. Extending Potential Matches
+    * Once a seed is found, BLAST attempts to find a local alignment that
+    extends the seed.
+    * Seeds on the same diagonal are combined as in FASTA, and then extended as
+     far as possible in a greedy manner
+    * During th extensions phase, the search stops when the sore passes below
+    some lower bound computed by BLAST (in advance??) to save time
+
+1. First make a set of lookup tables for all 3-letter (protein) or 11-letter
+(DNA) matches.
+2. Make another lookup table, containing the locations of all the 3-letter
+words in the database
+3. Start with a match, extend to the left and right until the score no longer
+increases
+
+- Heuristic
+- Very fast. Selectibe, but not as sensitive as SSEARCH.
+
+# BLAST in More Detail
+1. (SKIP)Remove low-complexity regions which don't include many different types
+    of proteins - these may confuse the algorithm by giving an unnaturally high score.
+2.  Make a k-letter word list of the query sequence:
+    - If k = 3, then we list the words of length 3 in the query sequence
+    sequentially (i.e one linear pass through t)
+3.  List the Possible Matching Words (Neighbourhood Words):
+    - The main difference between FASTA and BLAST - FASTA cares about ALL the
+    common k-words in the database and query sequences, whereas BLAST only
+    cares about the high-scoring ones.
+    - These scores are created by taking each word from the list generated in
+    step 2 in turn, and comparing that word with ALL 3 letter words. By using
+    the scoring matrix to score, there are 20^3 possible match scores for a
+    3-letter word.
+    - Only the words whose scores are greater than the threshold T will remain
+    in the possible matching words list, and these are called the ngibourhood
+    words of the given word from the list generated in step 2.
+4.  Organize the remaining high-scoring words into an efficient search tree,
+    allowing the program to rapidly compare the high-scoring words to the database
+    sequences
+5.  For each (target) sequence (s) in the database, scan through sequence, and
+    if we find an exact high scoring word, then this along with its
+    corresponding k-tuple becomes a 'seed'. We make note of the (i, j) position
+    of the match.
+6. Extend the exact matches to High Score (segment) Pair
+   - (DO FIRST) The original version of BLAST then stretch longer alignments in
+   the left and right directions (i.e along the diagonal) until the total
+   accumulated total score begins to decrease. These are the high scoring pairs
+   - (DO SECOND) To save more time, BLAST2 (gapped BLAST) has been developed. A
+   lower neighbourhood word score threshold to maintain the same level of
+   sensitivity (the same proportion trues which are detected as positive) for
+   detecting sequence similarity. Therefore, the possible matching words list
+   in step 3 becomes longer. Next, the exact matched regions, with distance A
+   from each other,will be joined as a longer new region. The new regions are
+   then extended by the same method as in the original version of BLAST, and
+   the HSP scores of the ended regions are then created by using a scoring
+   matrix as before.
+7. List all the HSPs whose score is greater than some cutoff value to be
+   considered. This score is determined empirically. See Wiki for how to do
+   this
+8. (SKIP) Evaluate the significance of the HSP score.
+    - We can determine the statistical significance of each of the HSP scores
+    using some fancy maths, and keep only those that are statistically
+    significance
+9. Use Dynamic Programming to combine two or more HSP regions into a longer
+   gapped alignment.
+   - This is a sum of score method, as it prefers combined alignments that have
+    higher total score than other combined alignments
+   - The other method is to use the poisson method of alignment - one alignment
+    is preferred over the other if the lowest individual part of the
+    combined alignment is greater than that of the the other combined alignment
+10. Return the highest gapped alignment.
+
+
+"ABCD"
+"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
+"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCDAAAADCDCDADDDDCCCADCADCACCCCC"
+"DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBAAAAAAADDDDDDCCCACADCAAAAAAAADCADDDCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCD"
+
+"ABCD"
+"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
+"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDCDADCDCDCDCD"
+"DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBDCDCDCDCD"
+
+"ABCD"
+"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
+"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAACCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAACCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCAACCCDDDDADCADCCCDCCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCAAAADCADCCCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCDAAAADCDCDADDDDCCCADCADCACCCCC"
+"DDCDDCCCDCBCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCCCDDDCDBBBBBBBBBBBBBBBBBBBBAAAAAAADCDCCCCCCDDDDDDDAAAAACCCCCAAAAAAAAAACCCCDDDCCCDDDDDDDCCCACADCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCAAAAAAAADCADDDCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDCD"
