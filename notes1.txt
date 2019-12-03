@@ -2,6 +2,24 @@
 # 012345
 # ABCACA
 
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=0.9\linewidth, height=0.8\linewidth]{complete8.png}
+  \caption{Complete Eight Vertex Graph Solution}
+  \label{fig:sub1}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=0.9\linewidth, height=0.8\linewidth]{graph1.png}
+  \caption{Graph 1\cite{Max} Solution}
+  \label{fig:sub2}
+\end{subfigure}
+\caption{Example Solutions}
+\label{fig:test}
+\end{figure}
+
 # 01234
 # BAACB
 
@@ -188,17 +206,79 @@ increases
 10. Return the highest gapped alignment.
 
 
-"ABCD"
-"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
-"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCDAAAADCDCDADDDDCCCADCADCACCCCC"
-"DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBAAAAAAADDDDDDCCCACADCAAAAAAAADCADDDCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCD"
+# My score function
+1. Logarithmically declining gap scores (i.e convex gap scores)
 
-"ABCD"
-"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
-"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDCDADCDCDCDCD"
-"DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBDCDCDCDCD"
+    - Convex gap penalty modifies the affine gap so that long gaps, as opposed
+    to shorter gaps, are favoured.
 
-"ABCD"
-"[[1,-5,-5,-5,-1], [-5, 1,-5,-5,-1], [-5,-5, 5,-5,-4], [-5,-5,-5, 6,-4], [-1,-1,-4,-4,-9]]"
-"DDCDDCCCDCAAAAAAAAAAAAAAAAAAAACCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAACCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCAACCCDDDDADCADCCCDCCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCAAAADCADCCCCCCAAAAAAAAAACCCCDDDCCCDDDCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCCDADCDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDAAAADCADCCCCCCDAAAADCDCDADDDDCCCADCADCACCCCC"
-"DDCDDCCCDCBCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCCCDDDCDBBBBBBBBBBBBBBBBBBBBAAAAAAADCDCCCCCCDDDDDDDAAAAACCCCCAAAAAAAAAACCCCDDDCCCDDDDDDDCCCACADCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDCAAAAAAAADCADDDCCCCCCCCCAAAACDDDAAAADDCADCADBBBBBBBBBBBBBBBBBBBBBDCDCDCDAAAAACDCCCCCCDDDDDDDAAAAAAACCCDDDDADCADCCCDCD"
+    * Extra:
+        - Different parameter values for different matrices (i.e BLOSUM), which
+         are used based on % identity - https://www.ncbi.nlm.nih
+         .gov/pmc/articles/PMC3848038/
+        - Moreover, many of these single mutational events can create gaps of varying
+ sizes. One concrete illustration of the use of gaps in the alignment model comes from the
+problem of cDNA matching. We know, that in the alignment we search for, there are many long gaps. These gaps
+are due to introns on the DNA that are missing on the cDNA. Using a good gap penalty
+model will prevent us from giving a very low score for these alignments
+        - Evidence against (Cartwright, Reed (5/12/2006). "Logarithmic gap costs decrease alignment
+     accuracy")
+
+2. Differing internal and opening/terminating gap and Gap-specific indel scores
+    - Pairwise alignment gap penalties, such as the affine gap penalty, are
+    often implemented independent of the amino acid types in the inserted or deleted
+    fragment or at the broken ends, despite evidence that specific residue types
+    are preferred in gap regions. This allocates a higher score
+
+3. CODON Lookup:
+    - So look up every three, and only if they don't match do we then look up
+    the individual scores/indels. Do this, but only with the CODONS that make
+    up the relavent proteins.
+
+
+Background Information:
+-  Global sequence comparisons almost always relyon  amino  acid  substitution
+ matrices  compiled  by averaging over large sets of related sequences. The
+ disadvantages of using a single substitution matrix have   been   pointed
+ out   on   numerous   occasions (Johnson et  al.,  1993;  Risleret  al.,
+ 1988).  The  major problem  is  that  at  different  positions  in
+ protein structures, different sets of amino acid sequences are likely to
+ substitute for one another. There is no single and universally applicable set
+ of distances or similarities between the amino acids (proteins)
+- Future hopes: generate scoring matrix based on mutation frequencies that take
+ into account the immediate environment of each mutation. Risler[23] and
+ Overington[24]
+- VTML-200 > BLOSUM > PAM. No evidence is found that selecting a matrix based
+   on sequence divergence improves accuracy.
+- One problem intrinsic to the model is its assumption that each amino
+ acid in a sequence is equally mutable. This is clearly not true. -> BLOSUM
+ Possibly the biggest complaint with the PAM family of matrices however is
+ with the data set used to create the model. http://www.quretec.com/u/vilo/edu/2002-03/Tekstialgoritmid_I/Loengud/Loeng3_Edit_Distance/bcorum_copy/references.htm
+- "... This can be achieved by altering the weights of matches and mismatches
+so that they
+ reflect the physical and chemical similarities that exist between amino
+ acids, or so that they reflect natural amino acid mutation rates.
+ In reality, nucleotide transitions do not occur at the same frequency as
+ transverions. """
+- BLOSUM scores amino acid replacements based on the frequencies of amino acid
+ substitutions in un-gaped aligned blocks of sequences with a certain
+ percentage  sequence identity. By other words, BLOSUM with high numbers should
+  be used for highly related sequences,  while low BLOSUM numbers should be
+  used for distantly related proteins, for example is screening databases.
+
+
+  Extra Information:
+  - Modification of the score matrices to account for overextended alignments,
+  leading to the alignments of non-homolog sequences.
+  During DNA replication, the machinery is prone to making two types of errors:
+(https://linkinghub.elsevier.com/retrieve/pii/S0968000406000582)
+    - Insertions of single DNA bases from the strand
+    - Deletions of single DNA bases from the strand
+     - Inversion, Translocation, Duplication
+
+# Frameshift mutation
+https://en.wikipedia.org/wiki/Frameshift_mutation
+A frameshift mutation (also called a framing error or a reading frame shift) is
+ a genetic mutation caused by indels (insertions or deletions) of a number of
+ nucleotides in a DNA sequence that is not divisible by three.
+

@@ -1,12 +1,9 @@
 import numpy as np
-from math import floor
+from math import floor, log
 from itertools import product
 import sys
 import ast
 
-
-# TODO - add var_name = none for numpy arrays and other variables to tell
-#  Python GC that the memory can be reused
 
 def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     scoring_matrix = np.array(scoring_matrix)
@@ -94,7 +91,6 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     seq1_indices.reverse()
     seq2_indices.reverse()
 
-    # TODO - sloppy - keep track of the max value during the algorithm itself
     return [best_score, seq1_indices, seq2_indices]
 
 
@@ -410,8 +406,6 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     seq1_tail = sequence1[mid_points[-1][0]:end_points[0][0] + 1]
     seq2_tail = sequence2[mid_points[-1][1]:end_points[0][1] + 1]
 
-    a = 10
-
     # Find the midpoint of the smaller sub-matrices
     return real_start_points[1:] + dynproglin_recursive(
         alphabet, scoring_matrix, seq1_head,
@@ -716,6 +710,91 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     )
 
 
+def dynprogcost(sequence1, sequence2):
+    alphabet = ['A', 'B', 'C']
+    index = {i: alphabet.index(i) for i in alphabet}
+    best_score = 0
+    m = len(sequence1)
+    n = len(sequence2)
+
+    # Score Function Parameters
+    scoring_matrix = np.array([[1, -1, -2], [-1, 2, -4], [-2, -4, 3]])
+    p = -5
+    def c(t): return 1 + (0.1 * t) if 0 <= t <= 10 else 2
+
+    align_matrix = np.zeros(shape=(m + 1, n + 1))
+    pointers = np.zeros(shape=(m + 1, n + 1))
+
+    # Rest of the matrix:
+    for i, l in enumerate(sequence1):
+        for j, k in enumerate(sequence2):
+
+            # Back track left:
+            a, b = i + 1, j
+            left_gap = 0
+            while pointers[a, b] == 1:
+                left_gap += 1
+                b -= 1
+            left = align_matrix[a, b] + (p * log(left_gap + 2))
+
+            # Back track up:
+            up_gap = 0
+            a, b = i, j + 1
+            while pointers[a, b] == 3:
+                up_gap += 1
+                a -= 1
+            up = align_matrix[a, b] + (p * log(up_gap + 2))
+
+            # Codon score
+            a, b = i, j
+            matched = 0
+            while pointers[a, b] == 2:
+                matched += 1
+                a -= 1
+                b -= 1
+            diag = align_matrix[i, j] + (
+                    scoring_matrix[index[l], index[k]] * c(floor(matched/3.0))
+            )
+
+            scores = np.array([0, left, diag, up])
+            score = scores.max()
+            pointers[i + 1, j + 1] = scores.argmax()
+
+            if score > best_score:
+                best_score = score
+
+            align_matrix[i + 1, j + 1] = score
+
+    # Form the indices
+    i, j = np.unravel_index(align_matrix.argmax(), align_matrix.shape)
+    direction = pointers[i, j]
+    seq1_indices = []
+    seq2_indices = []
+
+    # Need to handle the case where the maximum is 0 and there isn't a
+    # previous direction?
+    print(align_matrix)
+    print(pointers)
+
+    while direction != 0:
+        if direction == 1:
+            j = j - 1
+        elif direction == 2:
+            seq1_indices.append(i - 1)
+            seq2_indices.append(j - 1)
+            i = i - 1
+            j = j - 1
+        else:
+            i = i - 1
+
+        direction = pointers[i, j]
+
+    seq1_indices.reverse()
+    seq2_indices.reverse()
+
+    return [best_score, seq1_indices, seq2_indices]
+
+
 def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
                   indices2, calc_score):
     scoring_matrix = np.array(scoring_matrix)
@@ -741,9 +820,10 @@ def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
         x += 1
         y += 1
 
-    print(score)
-    print(scoring_matrix)
-    print(score == calc_score)
+    print(
+        "Does the calculated score equal the actual score?",
+        "Yes." if score == calc_score else "No."
+    )
 
 
 def main():
@@ -754,12 +834,13 @@ def main():
     seq2 = sys.argv[4]
 
     # Print format options for numpy
-    np.set_printoptions(edgeitems=20, linewidth=100000)
+    np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
 
-    # Run the three algorithms
+    # Run the four algorithms
     quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
     lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
     heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
+    own_results = dynprogcost(seq1, seq2)
 
     # Print results
     print("Sequence 1: ", seq1)
@@ -767,18 +848,23 @@ def main():
     print("Score (Quadratic): ", quad_results[0])
     print("Score (Linear):    ", lin_results[0])
     print("Score (Heuristic): ", heur_results[0])
+    print("Score (Own):       ", own_results[0])
     print("Sequence 1 Indices (Quadratic):", quad_results[1])
     print("Sequence 1 Indices (Linear):   ", lin_results[1])
     print("Sequence 1 Indices (Heuristic):", heur_results[1])
+    print("Sequence 1 Indices (Own):      ", own_results[1])
     print("Sequence 2 Indices (Quadratic):", quad_results[2])
     print("Sequence 2 Indices (Linear):   ", lin_results[2])
     print("Sequence 2 Indices (Heuristic):", heur_results[2])
+    print("Sequence 2 Indices (Own):      ", own_results[2])
 
-    check_indices(alphabet, scoring_matrix, seq1, seq2, lin_results[1],
-                  lin_results[2], lin_results[0])
-    #
-    # # TODO - memory management for part 2 if time - deleting/reassigning
-    # #  variables etc
+    # check_indices(alphabet, scoring_matrix, seq1, seq2, own_results[1],
+    #               own_results[2], own_results[0])
+
+    # TODO - memory management for part 2 if time - deleting/reassigning
+    # variables etc
+    # add var_name = none for numpy arrays and other variables to tell
+    # Python GC that the memory can be reused
 
 
 if __name__ == "__main__":
