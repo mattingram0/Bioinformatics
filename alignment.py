@@ -771,11 +771,6 @@ def dynprogcost(sequence1, sequence2):
     seq1_indices = []
     seq2_indices = []
 
-    # Need to handle the case where the maximum is 0 and there isn't a
-    # previous direction?
-    print(align_matrix)
-    print(pointers)
-
     while direction != 0:
         if direction == 1:
             j = j - 1
