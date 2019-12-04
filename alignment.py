@@ -476,6 +476,28 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
 
             align_matrix[i + 1, 0] = score
 
+        if diag < 0:
+            i_r = range(max(0, -(b + abs(diag))), min(m + diag, n))
+        else:
+            i_r = range(min(n - diag, m))
+
+        # The difference isn't on the diag being positive or negative,
+        # the difference is on whether or not he
+
+        # TODO YOU ARE HERE, THINK THIS WORKS BUT TEST WITH ANOTHER DIAG > 0
+        #  FIRST BEFORE IMPLEMENTING
+        if diag + m < n:
+            max_i = m
+        else:
+            max_i = min(m, n - diag + b)
+
+        i_range = range(max(0, -(b + abs(diag))), max_i)
+
+        for i in i_range:
+            for j in range(max(0, i + diag - b), min(n, i + diag + b + 1)):
+                print(i, j)
+
+
         # Rest of the matrix:
         for i, l in enumerate(sequence1):
             for j, k in enumerate(sequence2):
