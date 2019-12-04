@@ -3,6 +3,8 @@ from math import floor, log
 from itertools import product
 import sys
 import ast
+from datetime import datetime
+import random
 
 
 def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
@@ -431,7 +433,7 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
     # Banded DP Parameters
     b = max(int(0.1 * len(sequence2)), 10)  # Width of the band TODO CHANGE
     # BACK
-    h = 10  # Number of iterations of banded dp to run
+    h = 1  # Number of iterations of banded dp to run
 
     # Convert the seeds dict to a list of HSPs, sorted by score
     hsps = sorted(
@@ -576,7 +578,7 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
     k = 3  # Length of the k-words
     t = 10  # No. of high-scoring tuples to keep
     # TODO assume scores are normally distributed and choose only the top 5%
-    e = 3  # Extension threshold
+    d = 10  # No. of diagonals which to greedily extend along
 
     # Swap sequences
     if len(sequence1) < len(sequence2):
@@ -610,7 +612,6 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
                 for i in range(k):
                     score += scoring_matrix[index[word[i]], index[tup[i]]]
 
-                # TODO 1: See if removing this makes a difference
                 if score <= 0:
                     continue
 
@@ -653,60 +654,63 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
         k -= 1
 
     k += 1
+
+    # Sort the seeds, and keep only the top 50 diagonals
+    sorted_seeds = {}
+    counter = 0
+    for k in sorted(seeds, key=lambda s: len(seeds[s]), reverse=True):
+        if counter > d:
+            break
+        sorted_seeds[k] = seeds[k]
+        counter += 1
+
     # Extend the seeds along the diagonals with a sufficiently large number
     # of matches, giving us our High Scoring Pairs (HSPs)
     for key, val in seeds.items():
-        if len(val) > e:
-            for seed in val:
-                left_score = 0
-                right_score = 0
-                score = 0
+        for seed in val:
+            left_score = 0
+            right_score = 0
+            score = 0
 
-                # TODO 2: Add the check for a single gap heuristic
-                # Try extend left:
-                i, j = seed[0]
-                while score >= 0 and i > 0 and j > 0:
-                    score = scoring_matrix[
-                        index[sequence1[i - 1]],
-                        index[sequence2[j - 1]]
-                    ]
+            # TODO 2: Add the check for a single gap heuristic
+            # Try extend left:
+            i, j = seed[0]
+            while score >= 0 and i > 0 and j > 0:
+                score = scoring_matrix[
+                    index[sequence1[i - 1]],
+                    index[sequence2[j - 1]]
+                ]
 
-                    i -= 1
-                    j -= 1
-                    left_score += score
+                i -= 1
+                j -= 1
+                left_score += score
 
-                # New starting coordinates and left_score
-                seed[0] = (i + 1, j + 1)
-                left_score -= score
+            # New starting coordinates and left_score
+            seed[0] = (i + 1, j + 1)
+            left_score -= score
 
-                # Try extend right:
-                i, j = seed[1]
-                score = 0
-                while score >= 0 and i < m - 1 and j < n - 1:
-                    score = scoring_matrix[
-                        index[sequence1[i + 1]],
-                        index[sequence2[j + 1]]
-                    ]
+            # Try extend right:
+            i, j = seed[1]
+            score = 0
+            while score >= 0 and i < m - 1 and j < n - 1:
+                score = scoring_matrix[
+                    index[sequence1[i + 1]],
+                    index[sequence2[j + 1]]
+                ]
 
-                    i += 1
-                    j += 1
-                    right_score += score
+                i += 1
+                j += 1
+                right_score += score
 
-                # New end coordinates and right_score
-                seed[1] = (i - 1, j - 1)
-                right_score -= score
+            # New end coordinates and right_score
+            seed[1] = (i - 1, j - 1)
+            right_score -= score
 
-                # Update overall score
-                seed[2] = seed[2] + left_score + right_score
-
-        else:
-            # TODO - handle the case where there aren't any which pass the
-            #  extension threshold
-            continue
-            # Delete diagonal from the
+            # Update overall score
+            seed[2] = seed[2] + left_score + right_score
 
     return dynprog_banded(
-        alphabet, scoring_matrix, sequence1, sequence2, seeds, swapped
+         alphabet, scoring_matrix, sequence1, sequence2, seeds, swapped
     )
 
 
@@ -719,7 +723,7 @@ def dynprogcost(sequence1, sequence2):
 
     # Score Function Parameters
     scoring_matrix = np.array([[1, -1, -2], [-1, 2, -4], [-2, -4, 3]])
-    p = -5
+    p = -4
     def c(t): return 1 + (0.1 * t) if 0 <= t <= 10 else 2
 
     align_matrix = np.zeros(shape=(m + 1, n + 1))
@@ -748,10 +752,17 @@ def dynprogcost(sequence1, sequence2):
             # Codon score
             a, b = i, j
             matched = 0
-            while pointers[a, b] == 2:
+            # TODO REALLY THINK THROUGH THIS AND CHECK IT WORKS
+            while pointers[a, b] == 2 and sequence1[a - 1] == sequence2[b - 1]:
                 matched += 1
                 a -= 1
                 b -= 1
+
+            if sequence1[i] == sequence2[j]:
+                matched += 1
+            else:
+                matched = 0
+
             diag = align_matrix[i, j] + (
                     scoring_matrix[index[l], index[k]] * c(floor(matched/3.0))
             )
@@ -821,16 +832,36 @@ def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
     )
 
 
-def main():
-    # Parse Input
-    alphabet = sys.argv[1]
-    scoring_matrix = ast.literal_eval(sys.argv[2])
-    seq1 = sys.argv[3]
-    seq2 = sys.argv[4]
+def time_test(alphabet, scoring_matrix):
+    seq_lengths = [50, 100, 1000]
+    quad_times = []
+    lin_times = []
+    heur_times = []
 
-    # Print format options for numpy
-    np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
+    for l in seq_lengths:
+        # Generate random strings
+        seq1 = ''.join([random.choice(alphabet) for i in range(l)])
+        seq2 = ''.join([random.choice(alphabet) for i in range(l)])
 
+        # Time
+        start_time = datetime.now()
+        dynprog(alphabet, scoring_matrix, seq1, seq2)
+        quad_times.append(str(datetime.now() - start_time))
+
+        start_time = datetime.now()
+        dynproglin(alphabet, scoring_matrix, seq1, seq2)
+        lin_times.append(str(datetime.now() - start_time))
+
+        start_time = datetime.now()
+        heuralign(alphabet, scoring_matrix, seq1, seq2)
+        heur_times.append(str(datetime.now() - start_time))
+
+    print("Quadratic Times: ", quad_times)
+    print("Linear Times: ", lin_times)
+    print("Heuristic Times: ", heur_times)
+
+
+def run_all(alphabet, scoring_matrix, seq1, seq2):
     # Run the four algorithms
     quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
     lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
@@ -852,6 +883,20 @@ def main():
     print("Sequence 2 Indices (Linear):   ", lin_results[2])
     print("Sequence 2 Indices (Heuristic):", heur_results[2])
     print("Sequence 2 Indices (Own):      ", own_results[2])
+
+
+def main():
+    # Parse Input
+    alphabet = sys.argv[1]
+    scoring_matrix = ast.literal_eval(sys.argv[2])
+    seq1 = sys.argv[3]
+    seq2 = sys.argv[4]
+
+    # Print format options for numpy
+    np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
+
+    time_test(alphabet, scoring_matrix)
+
 
     # check_indices(alphabet, scoring_matrix, seq1, seq2, own_results[1],
     #               own_results[2], own_results[0])
