@@ -34,14 +34,14 @@ The scoring function that I have designed builds upon the suggestions in the ass
 \subsection{Convex Gap Scores}
 It is well-known that single mutation events - such as translocation and duplication - may create alignment gaps of different sizes. Therefore, there is a biological need to treat such gaps as a single entity, as opposed to individually penalising each successive \textit{indel}. Two protein sequences may be relatively similar but differ only at a certain interval, and we don't want to excessively penalise such an alignment. Affine gap scores have been used extensively in industry, and are often the gap score method of choice when partnered with the \textit{BLOSUM} score matrices. An affine gap score combines a constant 'gap-opening' penalty (favouring shorter gaps) with an additional penalty that is linear in the number of further residues in the gap (favouring fewer, larger gaps). Typically, the 'gap-opening' penalty is an order of magnitude larger than the additional penalty ((10, 1) for BLOSUM-62), and thus such a gap-score scheme goes some way to reducing the penalty given to large gaps. However, it has been shown empirically that an affine gap length is too rigid for use in a biological context\footnote{Sung, Wing-Kin (2011). \textit{Algorithms in Bioinformatics : A Practical Introduction. CRC Press. pp. 42?47}}. Moreover, other studies have shown that the distribution of \textit{indels} typically follows a power law (logarithmic) distribution\footnote{\url{http://elbo.gs.washington.edu/courses/GS_559_11_wi/slides/4A-Sequence_comparison-ScoreMatrices.pdf}}. Therefore, I have opted to use a convex gap penalty model, in which each additional space in a gap contributes less to the gap weight than the previous space. The model I propose for (internal) gap scores is:
 \begin{center}
-$P_g \cdot \ln(n) $
+$P_g \cdot \ln(n + 2) $
 \end {center}
 where $P_g$ is the gap opening penalty, and $n$ is the length of the gap. 
 
 \subsection{Trailing, Internal and Terminating Gap Score Differentiation}
 The second key feature of my scoring function is the implementation of different gap-scoring parameters for trailing, internal, and terminating gaps. It has been shown empirically, through optimization techniques, that the optimal model for matches often has opening and terminal gap-open penalties that are approximately half of the gap-open penalty used for internal gaps\footnote{\url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC548345/}}. Intuitively, this makes sense - the query sequence could merely be a translation of the database sequence, and should not be excessively penalised. Therefore, the model I propose for trailing and terminating gap sequences is:
 \begin{center}
-$\frac{P_g}{2} \cdot \ln(n) $
+$\frac{P_g}{2} \cdot \ln(n + 2) $
 \end {center}
 where $P_g$ is the gap opening penalty, and $n$ is the length of the gap.
  It is worth noting that this feature of the scoring function only applies to the global alignment case, as all (biologically-imitating) score functions assign negative scores to gaps, and so leading and trailing gaps would never be included in a local alignment. 
@@ -90,31 +90,32 @@ $C(t) \leftarrow 1 + (0.1 \cdot t) \: if \; 0 \leq t \leq 10 \: else \; 2$
 
 }
 \BlankLine
- $align\_matrix \leftarrow$ zero\_array($m + 1, n + 1$)\;
- $pointers \leftarrow$ zero\_array($m + 1, n + 1$)\;
+ $align\_matrix \leftarrow$ zero\_array($m + 1, n + 1$)\tcp*[l]{The dynamic programming matrix of scores}
+ $pointers \leftarrow$ zero\_array($m + 1, n + 1$)
  \BlankLine
  \For{i, l in $\mathrm{enumerate(}$D$\mathrm{)}$}{
  	\For{j, k in $\mathrm{enumerate(}$Q$\mathrm{)}$}{
 		$left\_gap, a, b \leftarrow$ backtrack($i, j, left$)\;
 		$up\_gap, c, d \leftarrow$ backtrack($i, j, up$)\;
-		$diag\_gap \leftarrow$ backtrack($i, j, diag$)\;
+		$num\_matched \leftarrow$ backtrack($i, j, diag$)\;
 		\BlankLine
 		$left\_score \leftarrow align\_matrix[a, b] + (P_g \cdot \ln(left\_gap + 2))$\;
 		$up\_score \leftarrow align\_matrix[c, d] + (P_g \cdot \ln(up\_gap + 2))$\;
-		$diag\_score \leftarrow align\_matrix[i, j] + (score\_matrix[l, k] \; \cdot \; $C($\lfloor{\frac{diag\_gap}{3}}\rfloor$)\;
+		$diag\_score \leftarrow align\_matrix[i, j] + (score\_matrix[l, k] \; \cdot \; $C($\lfloor{\frac{num\_matched}{3}}\rfloor$)\;
 		\BlankLine
 		$scores \leftarrow$ array($0, left\_score, diag\_score, up\_score$)\;
 		$align\_matrx[i + 1, j + 1] \leftarrow $ max($scores$)\;
-		$pointers[i + 1, j + 1] \leftarrow $ argmax($scores$)\;
-		
+		$pointers[i + 1, j + 1] \leftarrow $ argmax($scores$)\tcp*[l]{0 - New alignment, 1 - Left, 2 - Diagonal, 3 - Up}
 	}
  }
-
 \BlankLine
-\KwRet{ $\mathrm{[max(}$scores$\mathrm{))}$, $\mathrm{generate\_indices(}$pointers, $\mathrm{argmax(}$scores$\mathrm{))]}$}
-
+\KwRet{ $\mathrm{[max(}$align\_matrix$\mathrm{))}$, $\mathrm{generate\_indices(}$pointers, $\mathrm{argmax(}$scores$\mathrm{))]}$}
  \caption{Local Sequence Alignment with Convex Gap Penalties and Codon Rewards}
 \end{algorithm}
+\leavevmode
+
+The implementation of my algorithm follows the same structure as the standard quadratic-space dynamic programming algorithm implemented in the first part of the assignment. That is, it finds optimal alignments of shorter subsequences of the two input sequences, and 'recursively' builds up a larger alignment from the previous smaller alignments. However, there are some key changes. To facilitate the convex gap penalties, the algorithm must know when the current gap began if the current path being extended did indeed insert a gap in the previous location. The \textit{backtrack} function takes care of this, by recursively following the pointers back in the direction specified, starting from coordinates specified, until the path being considered takes a step in a direction different to the one specified. For example, calling \textit{backtrack(i, j, left)} will cause the algorithm to follow the pointers back from the $(i, j)$ location in the matrix, until the next direction of movement is not left. As a movement left in the matrix corresponds to inserting a space into the sequence on the 'left' of the matrix, doing so allows us to find the beginning of the current gap, and thus its length. When \textit{left} or \textit{right} is passed to the \textit{backtrack} function, the length and starting coordinates of the gap are returned. We then apply a logarithmically-scaled penalty to the gap, which means that successively longer gaps incur a decreasing additional penalty. The scaling factor of $+\;2$ is included so that opening a gap (which corresponds to a current gap size $n = 0$) is not penalised infinitely (in the case of $\ln(0 + 0)$), but does indeed incur a penalty (which wouldn't be the case with $\ln(0 + 1) = \ln(1) = 0$). Finally, we return the maximum
+
 \end{document}
 
 
