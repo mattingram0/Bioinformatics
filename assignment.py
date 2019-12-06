@@ -1,13 +1,7 @@
 import numpy as np
-from math import floor, log
-import random
-import sys
-import ast  # TODO REMOVE AND ALSO MAKE SURE IT RUNS FINE
-from datetime import datetime
-import matplotlib.pyplot as plt
-from memory_profiler import memory_usage
-import os
-import psutil
+
+# Needed for my cost function - hope that's okay!
+from math import log, floor
 
 
 class NeighbourScore:
@@ -201,9 +195,6 @@ def dynproglin(alphabet, scoring_matrix, sequence1, sequence2):
                 coords[i][1] == 1:
             seq1_indices.append(coords[i + 1][0] - 1)
             seq2_indices.append(coords[i + 1][1] - 1)
-
-    process = psutil.Process(os.getpid())
-    print(process.memory_info().rss)  # in bytes
 
     return [best_score, seq1_indices, seq2_indices]
 
@@ -606,7 +597,6 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
     # This outer while loop is necessary - small sequences may have no
     # k-word matches for the given k, so we iteratively reduce k
     while len(seeds) == 0:
-        start_time = datetime.now()
         all_k_words = product_recursive(alphabet, [""], k)
         k_word_neighbours = {}
 
@@ -646,36 +636,11 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
 
                 start = False
 
-        # k_word_neighbours is now
-        # {
-        # AAB: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ...],
-        # ABB: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ..],
-        # BBC: [...],
-        # ...
-        # DAA: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ...]
-        # }
-
-        print(
-            str(
-                (datetime.now() - start_time).total_seconds()
-            ) + "s scoring neighbours"
-        )
-
-        start_time = datetime.now()
-
         # Keep only the best T k_word_neighbours of each k_tuple
         for key, val in k_word_neighbours.items():
             k_word_neighbours[key] = list(
                 sorted(val, key=lambda ns: ns.score, reverse=True)[:t]
             )
-
-        print(
-            str(
-                (datetime.now() - start_time).total_seconds()
-            ) + "s keeping only best T neighbours"
-        )
-
-        start_time = datetime.now()
 
         # Generate the dict of seeds, indexed by (i - j). {(i - j): [[(i1, j1),
         # score1], [(i2, j2), score2], ... ], (i' - j'): [ ... ], ...
@@ -698,17 +663,9 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
                 except KeyError:
                     continue
 
-        print(
-            str(
-                (datetime.now() - start_time).total_seconds()
-            ) + "s indexing seeds"
-        )
-
         k -= 1
 
     k += 1
-
-    start_time = datetime.now()
 
     # Sort the seeds, and keep only the top d diagonals
     sorted_seeds = {}
@@ -719,13 +676,6 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
         sorted_seeds[k] = seeds[k]
         counter += 1
 
-    print(
-            str(
-                (datetime.now() - start_time).total_seconds()
-            ) + "s sorting seeds"
-    )
-
-    start_time = datetime.now()
     # Extend the seeds along the diagonals with a sufficiently large number
     # of matches, giving us our High Scoring Pairs (HSPs)
     for key, val in sorted_seeds.items():
@@ -770,37 +720,16 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
             # Update overall score
             seed[2] = seed[2] + left_score + right_score
 
-    print(
-            str(
-                (datetime.now() - start_time).total_seconds()
-            ) + "s extending seeds"
-    )
-
     return sorted_seeds, swapped
 
 
 def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
-
-    start_time = datetime.now()
-
-    seeds, swapped = generate_seeds(alphabet, scoring_matrix, sequence1,
-                                 sequence2)
-
-    print(
-        str(
-            (datetime.now() - start_time).total_seconds()
-        ) + "s before banded DP"
+    seeds, swapped = generate_seeds(
+        alphabet, scoring_matrix, sequence1, sequence2
     )
 
-    start_time = datetime.now()
     results = dynprog_banded(
          alphabet, scoring_matrix, sequence1, sequence2, seeds, swapped
-    )
-
-    print(
-        str(
-            (datetime.now() - start_time).total_seconds()
-        ) + "s in banded DP\n"
     )
 
     return results
@@ -844,7 +773,6 @@ def dynprogcost(sequence1, sequence2):
             # Codon score
             a, b = i, j
             matched = 0
-            # TODO REALLY THINK THROUGH THIS AND CHECK IT WORKS
             while pointers[a, b] == 2 and sequence1[a - 1] == sequence2[b - 1]:
                 matched += 1
                 a -= 1
@@ -893,158 +821,14 @@ def dynprogcost(sequence1, sequence2):
     return [best_score, seq1_indices, seq2_indices]
 
 
-def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
-                  indices2, calc_score):
-    scoring_matrix = np.array(scoring_matrix)
-    index = {i: alphabet.index(i) for i in alphabet}
-    index['_'] = len(alphabet)
-
-    score = 0
-    x, y = indices1[0], indices2[0]
-
-    for c in range(len(indices1)):
-        i = indices1[c]
-        j = indices2[c]
-
-        while x < i:
-            score += scoring_matrix[index[sequence1[x]], index['_']]
-            x += 1
-
-        while y < j:
-            score += scoring_matrix[index[sequence2[y]], index['_']]
-            y += 1
-
-        score += scoring_matrix[index[sequence1[i]], index[sequence2[j]]]
-        x += 1
-        y += 1
-
-    print(
-        "Does the calculated score equal the actual score?",
-        "Yes." if score == calc_score else "No."
-    )
-
-
-def time_and_check(alphabet, scoring_matrix):
-    seq_lengths = [10, 50, 100, 500, 1000, 1500, 2000, 3000, 5000, 7500, 10000]
-    quad_times = []
-    lin_times = []
-    heur_times = []
-
-    for l in seq_lengths:
-        # Generate random strings
-        seq1 = ''.join([random.choice(alphabet) for i in range(l)])
-        seq2 = ''.join([random.choice(alphabet) for i in range(l)])
-
-        # Time
-        start_time = datetime.now()
-        quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
-        quad_times.append((datetime.now() - start_time).total_seconds())
-
-        start_time = datetime.now()
-        lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
-        lin_times.append((datetime.now() - start_time).total_seconds())
-
-        start_time = datetime.now()
-        heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
-        heur_times.append((datetime.now() - start_time).total_seconds())
-
-        check_indices(alphabet, scoring_matrix, seq1, seq2, quad_results[1],
-                      quad_results[2], quad_results[0])
-        check_indices(alphabet, scoring_matrix, seq1, seq2, lin_results[1],
-                      lin_results[2], lin_results[0])
-        check_indices(alphabet, scoring_matrix, seq1, seq2, heur_results[1],
-                      heur_results[2], heur_results[0])
-
-    fig = plt.figure(figsize=(12.8, 9.6), dpi=250)
-    ax = fig.add_subplot(1, 1, 1)
-
-    # Plot the non-seasonally adjusted actual data
-    ax.plot(seq_lengths, quad_times, label="Quadratic Space")
-    ax.plot(seq_lengths, lin_times, label="Linear Space")
-    ax.plot(seq_lengths, heur_times, label="Heuristic")
-
-    # Add the legend and show the plot
-    ax.legend(loc="best")
-    plt.show()
-
-    print("Quadratic Times: ", quad_times)
-    print("Linear Times: ", lin_times)
-    print("Heuristic Times: ", heur_times)
-
-
-def run_all(alphabet, scoring_matrix, seq1, seq2):
-    # Run the four algorithms
-    quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
-    lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
-    heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
-    own_results = dynprogcost(seq1, seq2)
-
-    # Print results
-    print("Sequence 1: ", seq1)
-    print("Sequence 2: ", seq2)
-    print("Score (Quadratic): ", quad_results[0])
-    print("Score (Linear):    ", lin_results[0])
-    print("Score (Heuristic): ", heur_results[0])
-    print("Score (Own):       ", own_results[0])
-    print("Sequence 1 Indices (Quadratic):", quad_results[1])
-    print("Sequence 1 Indices (Linear):   ", lin_results[1])
-    print("Sequence 1 Indices (Heuristic):", heur_results[1])
-    print("Sequence 1 Indices (Own):      ", own_results[1])
-    print("Sequence 2 Indices (Quadratic):", quad_results[2])
-    print("Sequence 2 Indices (Linear):   ", lin_results[2])
-    print("Sequence 2 Indices (Heuristic):", heur_results[2])
-    print("Sequence 2 Indices (Own):      ", own_results[2])
-
-
-def memory_test(alphabet, scoring_matrix):
-    # 100, 500, 1000, 1500, 2000, 2500, 3000
-    l = 3000
-    seq1 = ''.join([random.choice(alphabet) for i in range(l)])
-    seq2 = ''.join([random.choice(alphabet) for i in range(l)])
-    # results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
-
-    size = [100, 100, 500, 500, 1000, 1000, 1500, 1500, 2000, 2000, 2500,
-            2500, 3000, 3000]
-    quad_usage = [97779712, 97730560, 101650432, 101715968, 113930240,
-                  113512448, 133763072, 133730304, 161677312, 161923072,
-                  197926912, 197836800, 241852416, 241913856]
-    lin_usage = [97615872, 97755136, 97837056, 97832960, 98263040, 98238464,
-                 98574336, 98631680, 99123200, 99168256, 99647488, 99622912,
-                 99868672, 99864576]
-
-    fig = plt.figure(figsize=(12.8, 9.6), dpi=250)
-    ax = fig.add_subplot(1, 1, 1)
-
-    # Plot the non-seasonally adjusted actual data
-    ax.plot(size, [q / (1024 * 1024) for q in quad_usage],
-            label="Quadratic Space")
-    ax.plot(size, [q / (1024 * 1024) for q in lin_usage],
-            label="Linear Space")
-
-    # Add the legend and show the plot
-    ax.legend(loc="best")
-    plt.show()
-
-
-def main():
-    # Parse Input
-    # alphabet = sys.argv[1]
-    # scoring_matrix = ast.literal_eval(sys.argv[2])
-    #seq1 = sys.argv[3]
-    #seq2 = sys.argv[4]
-
-    alphabet = "ABCD"
-    scoring_matrix = [[1, -5, -5, -5, -1],
-                      [-5, 1, -5, -5, -1],
-                      [-5, -5, 5, -5, -4],
-                      [-5, -5, -5, 6, -4],
-                      [-1, -1, -4, -4, -9]]
-
-    # Print format options for numpy
-    np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
-
-    # memory_test(alphabet, scoring_matrix)
-
-
-if __name__ == "__main__":
-    main()
+a = dynprog(
+    "ABC",
+    [[1, -1, -2, -1],
+     [-1, 2, -4, -1],
+     [-2, -4, 3, -2],
+     [-1, -1, -2, 0]],
+    "AABBAACA",
+    "CBACCCBA"
+)
+print("Score:   ", a[0])
+print("Indices: ", a[1], a[2])

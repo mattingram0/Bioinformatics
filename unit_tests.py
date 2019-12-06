@@ -1,83 +1,83 @@
-import alignment
+import assignment
 import numpy as np
 
 
 def test_dynprog():
-    quad_results1 = alignment.dynprog("ABCD",
-                                      [[1, -5, -5, -5, -1],
+    quad_results1 = assignment.dynprog("ABCD",
+                                       [[1, -5, -5, -5, -1],
                                        [-5, 1, -5, -5, -1],
                                        [-5, -5, 5, -5, -4],
                                        [-5, -5, -5, 6, -4],
                                        [-1, -1, -4, -4, -9]]
-                                      ,
+                                       ,
                                       "AAAAACCDDCCDDAAAAACC",
                                       "CCAAADDAAAACCAAADDCCAAAA")
 
-    quad_results2 = alignment.dynprog("ABCD",
-                                      [[1, -5, -5, -5, -1],
+    quad_results2 = assignment.dynprog("ABCD",
+                                       [[1, -5, -5, -5, -1],
                                        [-5, 1, -5, -5, -1],
                                        [-5, -5, 5, -5, -4],
                                        [-5, -5, -5, 6, -4],
                                        [-1, -1, -4, -4, -9]]
-                                      ,
+                                       ,
                                       "AACAAADAAAACAADAADAAA",
                                       "CDCDDD")
 
-    quad_results3 = alignment.dynprog("ABCD",
-                                      [[1, -5, -5, -5, -1],
+    quad_results3 = assignment.dynprog("ABCD",
+                                       [[1, -5, -5, -5, -1],
                                        [-5, 1, -5, -5, -1],
                                        [-5, -5, 5, -5, -4],
                                        [-5, -5, -5, 6, -4],
                                        [-1, -1, -4, -4, -9]]
-                                      ,
+                                       ,
                                       "DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDC"
                                       "DADCDCDCDCD",
                                       "DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
                                       "BBBBBBBBBBBBBDCDCDCDCD")
 
-    quad_results4 = alignment.dynprog("ABC",
-                                      [[1, -1, -2, -1], [-1, 2, -4, -1],
+    quad_results4 = assignment.dynprog("ABC",
+                                       [[1, -1, -2, -1], [-1, 2, -4, -1],
                                        [-2, -4, 3, -2], [-1, -1, -2, 0]]
-                                      ,
+                                       ,
                                       "AABBAACA",
                                       "CBACCCBA")
 
-    lin_results1 = alignment.dynproglin("ABCD",
-                                     [[1, -5, -5, -5, -1],
+    lin_results1 = assignment.dynproglin("ABCD",
+                                         [[1, -5, -5, -5, -1],
                                       [-5, 1, -5, -5, -1],
                                       [-5, -5, 5, -5, -4],
                                       [-5, -5, -5, 6, -4],
                                       [-1, -1, -4, -4, -9]]
-                                     ,
+                                         ,
                                      "AAAAACCDDCCDDAAAAACC",
                                      "CCAAADDAAAACCAAADDCCAAAA")
 
-    lin_results2 = alignment.dynproglin("ABCD",
-                                     [[1, -5, -5, -5, -1],
+    lin_results2 = assignment.dynproglin("ABCD",
+                                         [[1, -5, -5, -5, -1],
                                       [-5, 1, -5, -5, -1],
                                       [-5, -5, 5, -5, -4],
                                       [-5, -5, -5, 6, -4],
                                       [-1, -1, -4, -4, -9]]
-                                     ,
+                                         ,
                                      "AACAAADAAAACAADAADAAA",
                                      "CDCDDD")
 
-    lin_results3 = alignment.dynproglin("ABCD",
-                                     [[1, -5, -5, -5, -1],
+    lin_results3 = assignment.dynproglin("ABCD",
+                                         [[1, -5, -5, -5, -1],
                                       [-5, 1, -5, -5, -1],
                                       [-5, -5, 5, -5, -4],
                                       [-5, -5, -5, 6, -4],
                                       [-1, -1, -4, -4, -9]]
-                                     ,
+                                         ,
                                      "DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDC"
                                      "DADCDCDCDCD",
                                      "DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
                                      "BBBBBBBBBBBBBDCDCDCDCD")
 
-    lin_results4 = alignment.dynproglin("ABC",
-                                     [[1, -1, -2, -1], [-1, 2, -4, -1],
+    lin_results4 = assignment.dynproglin("ABC",
+                                         [[1, -1, -2, -1], [-1, 2, -4, -1],
                                       [-2, -4, 3, -2], [-1, -1, -2, 0]]
-                                     ,
+                                         ,
                                      "AABBAACA",
                                      "CBACCCBA")
 
