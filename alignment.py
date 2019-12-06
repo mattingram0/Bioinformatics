@@ -1,10 +1,16 @@
 import numpy as np
 from math import floor, log
-from itertools import product
-import sys
-import ast
-from datetime import datetime
 import random
+import sys
+import ast  # TODO REMOVE AND ALSO MAKE SURE IT RUNS FINE
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+
+class NeighbourScore:
+    def __init__(self, tuple, score):
+        self.tuple = tuple
+        self.score = score
 
 
 def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
@@ -418,6 +424,15 @@ def dynproglin_recursive(alphabet, scoring_matrix, sequence1, sequence2,
     ) + real_end_points[:-1]
 
 
+def product_recursive(alphabet, prefix, k):
+    if k == 0:
+        return prefix
+
+    return product_recursive(
+        alphabet, [p + a for p in prefix for a in alphabet], k - 1
+    )
+
+
 def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
                    swapped):
     scoring_matrix = np.array(scoring_matrix)
@@ -431,20 +446,14 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
     best_final_score = 0  # Holds the final best score
 
     # Banded DP Parameters
-    b = max(int(0.1 * len(sequence2)), 10)  # Width of the band TODO CHANGE
-    # BACK
-    h = 1  # Number of iterations of banded dp to run
+    b = 20
+    h = 10  # Number of iterations of banded dp to run
 
-    # Convert the seeds dict to a list of HSPs, sorted by score
-    hsps = sorted(
-        [hsp for hsp_list in seeds.values() for hsp in hsp_list],
-        key=lambda hsp_tup: hsp_tup[2]
-    )[-h:]
+    # Run the DP over the diagonals with the best seed scores
+    diagonals = {i: sum(list(zip(*v))[2]) for i, v in seeds.items()}
+    diagonals_sorted = sorted(diagonals, key=diagonals.get, reverse=True)[:h]
 
-    for hsp in hsps:
-        diag = hsp[0][1] - hsp[1][1]
-
-        # TODO 3: Stop being lazy and improve the amount of space used
+    for diag in diagonals_sorted:
         align_matrix = np.zeros(shape=(m + 1, n + 1))
         pointers = np.zeros(shape=(m + 1, n + 1))
 
@@ -476,16 +485,6 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
 
             align_matrix[i + 1, 0] = score
 
-        if diag < 0:
-            i_r = range(max(0, -(b + abs(diag))), min(m + diag, n))
-        else:
-            i_r = range(min(n - diag, m))
-
-        # The difference isn't on the diag being positive or negative,
-        # the difference is on whether or not he
-
-        # TODO YOU ARE HERE, THINK THIS WORKS BUT TEST WITH ANOTHER DIAG > 0
-        #  FIRST BEFORE IMPLEMENTING
         if diag + m < n:
             max_i = m
         else:
@@ -493,26 +492,11 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
 
         i_range = range(max(0, -(b + abs(diag))), max_i)
 
+        # Rest of the matrix
         for i in i_range:
             for j in range(max(0, i + diag - b), min(n, i + diag + b + 1)):
-                print(i, j)
-
-
-        # Rest of the matrix:
-        for i, l in enumerate(sequence1):
-            for j, k in enumerate(sequence2):
-                i_range = range(
-                    max(0, j - diag - b - 1),
-                    min(m, j - diag + b + 1)
-                )
-                j_range = range(
-                    max(0, i + diag - b - 1),
-                    min(n, i + diag + b + 1)
-                )
-
-                # Continue only if in the band
-                if i not in i_range or j not in j_range:
-                    continue
+                l = sequence1[i]
+                k = sequence2[j]
 
                 # On the top boundary of the band
                 if i == (j - diag + b) and j == (i + diag + b):
@@ -590,7 +574,7 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
         return [best_final_score, seq1_indices, seq2_indices]
 
 
-def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
+def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
     swapped = False
     scoring_matrix = np.array(scoring_matrix)
     index = {i: alphabet.index(i) for i in alphabet}
@@ -598,9 +582,8 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
 
     # BLAST Parameters
     k = 3  # Length of the k-words
-    t = 10  # No. of high-scoring tuples to keep
-    # TODO assume scores are normally distributed and choose only the top 5%
-    d = 10  # No. of diagonals which to greedily extend along
+    t = 50  # No. of high-scoring tuples to keep
+    d = 15  # No. of diagonals which to greedily extend along
 
     # Swap sequences
     if len(sequence1) < len(sequence2):
@@ -614,70 +597,114 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
 
     seeds = {}
 
-    # This outer while loop is necessary, as for small sequences we may end
-    # up in the case where a length of 3 for our k-words
-    while len(seeds) == 0:  # TODO - check the base case of k = 0
-        k_word_list = []
-        # Generate the k-word list
-        for i in range(n - k):
-            k_word_list.append(sequence2[i:i + k])
+    # This outer while loop is necessary - small sequences may have no
+    # k-word matches for the given k, so we iteratively reduce k
+    while len(seeds) == 0:
+        start_time = datetime.now()
+        all_k_words = product_recursive(alphabet, [""], k)
+        k_word_neighbours = {}
 
-        k_word_list = list(set(k_word_list))
+        query_index = {}
 
-        # Generate the word neighbours
-        k_word_neighbours = {k: [] for k in k_word_list}
-        k_tuples = [''.join(i) for i in product(alphabet, repeat=k)]
-        for word in k_word_list:
-            for tup in k_tuples:
+        # Locations of all the k_words in query sequence
+        # query index is {AAB : [0, 4], ABC: [1], ...} for all k_word tuples
+        # that exist in the query
+        for j in range(n - k):
+            k_word = sequence2[j: j + k]
+
+            if k_word in query_index:
+                query_index[k_word].append(j)
+            else:
+                query_index[k_word] = [j]
+
+        # k_word_neighbours is {AAB: [], ABB: [], BBC: [], ... DAA: []}
+        # all_k_tuples is [AAA, AAB, AAC, AAD, ABA, ACA, ADA, ...] (all combs)
+        for i in range(m - k):
+            k_word = sequence1[i: i + k]
+            start = True
+            for tup in all_k_words:
                 score = 0
 
-                for i in range(k):
-                    score += scoring_matrix[index[word[i]], index[tup[i]]]
+                for j in range(k):
+                    score += scoring_matrix[index[k_word[j]], index[tup[j]]]
 
                 if score <= 0:
                     continue
 
-                k_word_neighbours[word].append((tup, score))
+                if start:
+                    k_word_neighbours[i] = [NeighbourScore(tup, score)]
+                else:
+                    k_word_neighbours[i].append(
+                        NeighbourScore(tup, score)
+                    )
 
-        # Keep only the best T k_word_neighbours of each k_tuple, then convert
-        # each [('b', score1), ('c': score2)] into [('b', 'c'),
-        # (score1, score2)]
+                start = False
+
+        # k_word_neighbours is now
+        # {
+        # AAB: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ...],
+        # ABB: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ..],
+        # BBC: [...],
+        # ...
+        # DAA: [NS(AAA, score), NS(AAB, score), NS(AAC, score), ...]
+        # }
+
+        print(
+            str(
+                (datetime.now() - start_time).total_seconds()
+            ) + "s scoring neighbours"
+        )
+
+        start_time = datetime.now()
+
+        # Keep only the best T k_word_neighbours of each k_tuple
         for key, val in k_word_neighbours.items():
             k_word_neighbours[key] = list(
-                zip(*sorted(val, key=lambda tup_score: tup_score[1])[-t:])
+                sorted(val, key=lambda ns: ns.score, reverse=True)[:t]
             )
 
+        print(
+            str(
+                (datetime.now() - start_time).total_seconds()
+            ) + "s keeping only best T neighbours"
+        )
+
+        start_time = datetime.now()
+
         # Generate the dict of seeds, indexed by (i - j). {(i - j): [[(i1, j1),
-        # score1], [(i2, j2), score2], ... ], (i' - j'): [ ... ], ...}
-        for j in range(n - k):
-            for i in range(m - k):
+        # score1], [(i2, j2), score2], ... ], (i' - j'): [ ... ], ...
+        for i in range(m - k):
+            for neighbour in k_word_neighbours[i]:
                 try:
-                    query = sequence1[i: i + k]
-                    target = sequence2[j: j + k]
+                    indices = query_index[neighbour.tuple]
 
-                    k_word_list_score = k_word_neighbours[target]
-                    k_word_list = k_word_list_score[0]
+                    for j in indices:
+                        if j - i in seeds:
+                            seeds[j - i].append(
+                                [(i, j), (i + k - 1, j + k - 1),
+                                 neighbour.score]
+                            )
+                        else:
+                            seeds[j - i] = [[(i, j),
+                                             (i + k - 1, j + k - 1),
+                                             neighbour.score]]
 
-                    ind = k_word_list.index(query)
-                    score = k_word_neighbours[target][1][ind]
-
-                    seeds[j - i] = seeds.get(j - i, []) + [
-                        [(i, j), (i + k - 1, j + k - 1), score]
-                    ]
-
-                    # TODO - keep track of highest scoring seed, and make sure
-                    #  that we manually extend this one and dynamic program it,
-                    #  in the case it is an isolated match on a diag which is
-                    #  long
-
-                except ValueError:
+                except KeyError:
                     continue
+
+        print(
+            str(
+                (datetime.now() - start_time).total_seconds()
+            ) + "s indexing seeds"
+        )
 
         k -= 1
 
     k += 1
 
-    # Sort the seeds, and keep only the top 50 diagonals
+    start_time = datetime.now()
+
+    # Sort the seeds, and keep only the top d diagonals
     sorted_seeds = {}
     counter = 0
     for k in sorted(seeds, key=lambda s: len(seeds[s]), reverse=True):
@@ -686,15 +713,21 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
         sorted_seeds[k] = seeds[k]
         counter += 1
 
+    print(
+            str(
+                (datetime.now() - start_time).total_seconds()
+            ) + "s sorting seeds"
+    )
+
+    start_time = datetime.now()
     # Extend the seeds along the diagonals with a sufficiently large number
     # of matches, giving us our High Scoring Pairs (HSPs)
-    for key, val in seeds.items():
+    for key, val in sorted_seeds.items():
         for seed in val:
             left_score = 0
             right_score = 0
             score = 0
 
-            # TODO 2: Add the check for a single gap heuristic
             # Try extend left:
             i, j = seed[0]
             while score >= 0 and i > 0 and j > 0:
@@ -731,9 +764,40 @@ def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
             # Update overall score
             seed[2] = seed[2] + left_score + right_score
 
-    return dynprog_banded(
+    print(
+            str(
+                (datetime.now() - start_time).total_seconds()
+            ) + "s extending seeds"
+    )
+
+    return sorted_seeds, swapped
+
+
+def heuralign(alphabet, scoring_matrix, sequence1, sequence2):
+
+    start_time = datetime.now()
+
+    seeds, swapped = generate_seeds(alphabet, scoring_matrix, sequence1,
+                                 sequence2)
+
+    print(
+        str(
+            (datetime.now() - start_time).total_seconds()
+        ) + "s before banded DP"
+    )
+
+    start_time = datetime.now()
+    results = dynprog_banded(
          alphabet, scoring_matrix, sequence1, sequence2, seeds, swapped
     )
+
+    print(
+        str(
+            (datetime.now() - start_time).total_seconds()
+        ) + "s in banded DP\n"
+    )
+
+    return results
 
 
 def dynprogcost(sequence1, sequence2):
@@ -854,8 +918,8 @@ def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
     )
 
 
-def time_test(alphabet, scoring_matrix):
-    seq_lengths = [50, 100, 1000]
+def time_and_check(alphabet, scoring_matrix):
+    seq_lengths = [10, 50, 100, 500, 1000, 1500, 2000][:3]
     quad_times = []
     lin_times = []
     heur_times = []
@@ -867,16 +931,35 @@ def time_test(alphabet, scoring_matrix):
 
         # Time
         start_time = datetime.now()
-        dynprog(alphabet, scoring_matrix, seq1, seq2)
-        quad_times.append(str(datetime.now() - start_time))
+        quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
+        quad_times.append((datetime.now() - start_time).total_seconds())
 
         start_time = datetime.now()
-        dynproglin(alphabet, scoring_matrix, seq1, seq2)
-        lin_times.append(str(datetime.now() - start_time))
+        lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
+        lin_times.append((datetime.now() - start_time).total_seconds())
 
         start_time = datetime.now()
-        heuralign(alphabet, scoring_matrix, seq1, seq2)
-        heur_times.append(str(datetime.now() - start_time))
+        heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
+        heur_times.append((datetime.now() - start_time).total_seconds())
+
+        check_indices(alphabet, scoring_matrix, seq1, seq2, quad_results[1],
+                      quad_results[2], quad_results[0])
+        check_indices(alphabet, scoring_matrix, seq1, seq2, lin_results[1],
+                      lin_results[2], lin_results[0])
+        check_indices(alphabet, scoring_matrix, seq1, seq2, heur_results[1],
+                      heur_results[2], heur_results[0])
+
+    fig = plt.figure(figsize=(12.8, 9.6), dpi=250)
+    ax = fig.add_subplot(1, 1, 1)
+
+    # Plot the non-seasonally adjusted actual data
+    ax.plot(seq_lengths, quad_times, label="Quadratic Space")
+    ax.plot(seq_lengths, lin_times, label="Linear Space")
+    ax.plot(seq_lengths, heur_times, label="Heuristic")
+
+    # Add the legend and show the plot
+    ax.legend(loc="best")
+    plt.show()
 
     print("Quadratic Times: ", quad_times)
     print("Linear Times: ", lin_times)
@@ -917,16 +1000,7 @@ def main():
     # Print format options for numpy
     np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
 
-    time_test(alphabet, scoring_matrix)
-
-
-    # check_indices(alphabet, scoring_matrix, seq1, seq2, own_results[1],
-    #               own_results[2], own_results[0])
-
-    # TODO - memory management for part 2 if time - deleting/reassigning
-    # variables etc
-    # add var_name = none for numpy arrays and other variables to tell
-    # Python GC that the memory can be reused
+    time_and_check(alphabet, scoring_matrix)
 
 
 if __name__ == "__main__":
