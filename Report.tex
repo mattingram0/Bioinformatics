@@ -32,11 +32,11 @@
 \section{Scoring Function Overview}
 The scoring function that I have designed builds upon the suggestions in the assignment brief, and to the best of my knowledge has strong biological intuition. The score function is made up of three key parts. 
 \subsection{Convex Gap Scores}
-It is well-known that single mutation events - such as translocation and duplication - may create alignment gaps of different sizes. Therefore, there is a biological need to treat such gaps as a single entity, as opposed to individually penalising each successive \textit{indel}. Two protein sequences may be relatively similar but differ only at a certain interval, and we don't want to excessively penalise such an alignment. Affine gap scores have been used extensively in industry, and are often the gap score method of choice when partnered with the \textit{BLOSUM} score matrices. An affine gap score combines a constant 'gap-opening' penalty (favouring shorter gaps) with an additional penalty that is linear in the number of further residues in the gap (favouring fewer, larger gaps). Typically, the 'gap-opening' penalty is an order of magnitude larger than the additional penalty ((10, 1) for BLOSUM-62), and thus such a gap-score scheme goes some way to reducing the penalty given to large gaps. However, it has been shown empirically that an affine gap length is too rigid for use in a biological context\footnote{Sung, Wing-Kin (2011). \textit{Algorithms in Bioinformatics : A Practical Introduction. CRC Press. pp. 42?47}}. Moreover, other studies have shown that the distribution of \textit{indels} typically follows a power law (logarithmic) distribution\footnote{\url{http://elbo.gs.washington.edu/courses/GS_559_11_wi/slides/4A-Sequence_comparison-ScoreMatrices.pdf}}. Therefore, I have opted to use a convex gap penalty model, in which each additional space in a gap contributes less to the gap weight than the previous space. The model I propose for (internal) gap scores is:
+It is well-known that single mutation events - such as translocation and duplication - may create alignment gaps of different sizes. Therefore, there is a biological need to treat such gaps as a single entity, as opposed to individually penalising each successive \textit{indel}. Two protein sequences may be relatively similar but differ only at a certain interval, and we don't want to excessively penalise such an alignment. Affine gap scores have been used extensively in industry, and are often the gap score method of choice when partnered with the \textit{BLOSUM} score matrices. An affine gap score combines a constant 'gap-opening' penalty (favouring shorter gaps) with an additional penalty that is linear in the number of further residues in the gap (favouring fewer, larger gaps). Typically, the 'gap-opening' penalty is an order of magnitude larger than the additional penalty ((10, 1) for BLOSUM-62), and thus such a gap-score scheme goes some way to reducing the penalty given to large gaps. However, it has been shown empirically that an affine gap length is too rigid for use in a biological context\footnote{Sung, Wing-Kin (2011). \textit{Algorithms in Bioinformatics : A Practical Introduction. CRC Press. pp. 42?47}}. Moreover, other studies have shown that the distribution of \textit{indels} typically follows a power law (logarithmic) distribution\footnote{\url{http://elbo.gs.washington.edu/courses/GS_559_11_wi/slides/4A-Sequence_comparison-ScoreMatrices.pdf}}. Therefore, I have opted to use a convex gap penalty model, in which each additional space in a gap contributes less to the overall gap score than the previous space. The model I propose for (internal) gap scores is:
 \begin{center}
 $P_g \cdot \ln(n + 2) $
 \end {center}
-where $P_g$ is the gap opening penalty, and $n$ is the length of the gap. 
+where $P_g$ is the gap opening penalty, and $n$ is the length of the gap (the reasoning behind the + 2 is discussed later).
 
 \subsection{Trailing, Internal and Terminating Gap Score Differentiation}
 The second key feature of my scoring function is the implementation of different gap-scoring parameters for trailing, internal, and terminating gaps. It has been shown empirically, through optimization techniques, that the optimal model for matches often has opening and terminal gap-open penalties that are approximately half of the gap-open penalty used for internal gaps\footnote{\url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC548345/}}. Intuitively, this makes sense - the query sequence could merely be a translation of the database sequence, and should not be excessively penalised. Therefore, the model I propose for trailing and terminating gap sequences is:
@@ -54,9 +54,9 @@ $Adjusted\;Score = C(t) \cdot Additive\;Score $,
 where $t$ is the number of codons matched consecutively. This codon scoring scheme could be extend further and the entire alignment scoring could be implemented on the codon level, using the empirical scoring matrices found here\footnote{\url{https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-6-134}}.
 
 \subsection{Further Features}
-Further features that could be included to more accurately mimic biologically reality include:
+Further features that could be included to more accurately mimic biological reality include:
 \begin{itemize}
-\item Take into account the position within the current codon. Point mutation frequencies are not evenly distributed over the three positions within a codon, so different scoring matrices could be used for each of the three positions
+\item Take into account the position within the current codon. Point mutation frequencies are not evenly distributed over the three positions within a codon, so different scoring matrices could be used for each of the three positions.
 \item Have gap-specific indel scores. There is evidence to suggest that specific residue types are preferred in gap regions\footnote{Wrabl JO, Grishin NV (2004). "Gaps in structurally similar proteins: towards improvement of multiple sequence alignment" }, and so once a gap has been opened a secondary scoring matrix could be used for the following residues in the gap.
 \item Score specific mutation events individually. For example, in the case of a duplicated amino acid (a triplet/codon of three bases), the penalty induced for the insertion of three \textit{indels} could be reduced if the three residues are identical to previous triplet of residues: as in the case of AAC\textbf{ACG}TCG and AAC\textbf{ACGACG}TCG, for example. 
 
@@ -64,9 +64,9 @@ Further features that could be included to more accurately mimic biologically re
 \newgeometry{left=1cm, top=1cm, right=1cm, bottom=1.3cm}
 \section{Scoring Function Implementation}
 \subsection{Parameters}
-As I have described an array of different features above, I shall implement only the convex gap score penalty, and the codon match reward function. The parameters required are therefore:
+As I have described an array of different features above, I shall implement only the convex gap score penalty and the codon match reward function. The parameters required are therefore:
 \begin{itemize}
-\item The gap-opening penalty: $P_g = -10$ (as is often used with some of the BLOSUM matrices)
+\item The gap-opening penalty: $P_g = -4$ (chosen to work with the score matrix below, so gaps are not excessively punished).
 \item The codon match reward function: $ C(t) = \begin{cases} 
       1 + (0.1)t & 0 \leq t \leq 10 \\
       2 & t > 10 \\

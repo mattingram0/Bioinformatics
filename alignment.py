@@ -925,7 +925,7 @@ def check_indices(alphabet, scoring_matrix, sequence1, sequence2, indices1,
 
 
 def time_and_check(alphabet, scoring_matrix):
-    seq_lengths = [10, 50, 100, 500, 1000, 1500, 2000, 3000, 5000, 7500, 10000]
+    seq_lengths = [100, 2000, 4000, 6000, 8000, 12000]
     quad_times = []
     lin_times = []
     heur_times = []
@@ -937,21 +937,21 @@ def time_and_check(alphabet, scoring_matrix):
 
         # Time
         start_time = datetime.now()
-        quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
+        # quad_results = dynprog(alphabet, scoring_matrix, seq1, seq2)
         quad_times.append((datetime.now() - start_time).total_seconds())
 
         start_time = datetime.now()
-        lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
+        # lin_results = dynproglin(alphabet, scoring_matrix, seq1, seq2)
         lin_times.append((datetime.now() - start_time).total_seconds())
 
         start_time = datetime.now()
         heur_results = heuralign(alphabet, scoring_matrix, seq1, seq2)
         heur_times.append((datetime.now() - start_time).total_seconds())
 
-        check_indices(alphabet, scoring_matrix, seq1, seq2, quad_results[1],
-                      quad_results[2], quad_results[0])
-        check_indices(alphabet, scoring_matrix, seq1, seq2, lin_results[1],
-                      lin_results[2], lin_results[0])
+        # check_indices(alphabet, scoring_matrix, seq1, seq2, quad_results[1],
+        #               quad_results[2], quad_results[0])
+        # check_indices(alphabet, scoring_matrix, seq1, seq2, lin_results[1],
+        #               lin_results[2], lin_results[0])
         check_indices(alphabet, scoring_matrix, seq1, seq2, heur_results[1],
                       heur_results[2], heur_results[0])
 
@@ -959,16 +959,16 @@ def time_and_check(alphabet, scoring_matrix):
     ax = fig.add_subplot(1, 1, 1)
 
     # Plot the non-seasonally adjusted actual data
-    ax.plot(seq_lengths, quad_times, label="Quadratic Space")
-    ax.plot(seq_lengths, lin_times, label="Linear Space")
+    # ax.plot(seq_lengths, quad_times, label="Quadratic Space")
+    # ax.plot(seq_lengths, lin_times, label="Linear Space")
     ax.plot(seq_lengths, heur_times, label="Heuristic")
 
     # Add the legend and show the plot
     ax.legend(loc="best")
     plt.show()
 
-    print("Quadratic Times: ", quad_times)
-    print("Linear Times: ", lin_times)
+    # print("Quadratic Times: ", quad_times)
+    # print("Linear Times: ", lin_times)
     print("Heuristic Times: ", heur_times)
 
 
@@ -1042,9 +1042,12 @@ def main():
 
     # Print format options for numpy
     np.set_printoptions(edgeitems=20, linewidth=100000, precision=2)
-
+    time_and_check(alphabet, scoring_matrix)
     # memory_test(alphabet, scoring_matrix)
 
 
 if __name__ == "__main__":
     main()
+
+# TODO: check report (blast stuff), and check the
+#  outputs of the assignment file

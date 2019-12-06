@@ -5,8 +5,8 @@ from math import log, floor
 
 
 class NeighbourScore:
-    def __init__(self, tuple, score):
-        self.tuple = tuple
+    def __init__(self, tup, score):
+        self.tup = tup
         self.score = score
 
 
@@ -64,7 +64,7 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
             ])
 
             score = scores.max()
-            pointers[i + 1, j + 1] = scores.argmax()  # Poor style
+            pointers[i + 1, j + 1] = scores.argmax()
 
             if score > best_score:
                 best_score = score
@@ -76,9 +76,6 @@ def dynprog(alphabet, scoring_matrix, sequence1, sequence2):
     direction = pointers[i, j]
     seq1_indices = []
     seq2_indices = []
-
-    # Need to handle the case where the maximum is 0 and there isn't a
-    # previous direction?
 
     while direction != 0:
         if direction == 1:
@@ -443,8 +440,8 @@ def dynprog_banded(alphabet, scoring_matrix, sequence1, sequence2, seeds,
     best_final_score = 0  # Holds the final best score
 
     # Banded DP Parameters
-    b = 20
-    h = 10  # Number of iterations of banded dp to run
+    b = 20  # Width of the band
+    h = 10  # Number of diagonals on which to run banded DP
 
     # Run the DP over the diagonals with the best seed scores
     diagonals = {i: sum(list(zip(*v))[2]) for i, v in seeds.items()}
@@ -579,10 +576,11 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
 
     # BLAST Parameters
     k = 3  # Length of the k-words
-    t = 50  # No. of high-scoring tuples to keep
+    t = 50  # No. of high-scoring tuples to keep for each database k-words
     d = 15  # No. of diagonals which to greedily extend along
 
-    # Swap sequences
+    # Swap sequences. Sequence 2 is always the smaller (query) sequence,
+    # and sequence 1 is always the longer (database) sequence
     if len(sequence1) < len(sequence2):
         temp = sequence1
         sequence1 = sequence2
@@ -603,8 +601,6 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
         query_index = {}
 
         # Locations of all the k_words in query sequence
-        # query index is {AAB : [0, 4], ABC: [1], ...} for all k_word tuples
-        # that exist in the query
         for j in range(n - k):
             k_word = sequence2[j: j + k]
 
@@ -613,8 +609,8 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
             else:
                 query_index[k_word] = [j]
 
-        # k_word_neighbours is {AAB: [], ABB: [], BBC: [], ... DAA: []}
-        # all_k_tuples is [AAA, AAB, AAC, AAD, ABA, ACA, ADA, ...] (all combs)
+        # Score each k_word in the database sequence against all the other
+        # k_word tuples. This would be done as a pre-calculation step.
         for i in range(m - k):
             k_word = sequence1[i: i + k]
             start = True
@@ -642,12 +638,11 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
                 sorted(val, key=lambda ns: ns.score, reverse=True)[:t]
             )
 
-        # Generate the dict of seeds, indexed by (i - j). {(i - j): [[(i1, j1),
-        # score1], [(i2, j2), score2], ... ], (i' - j'): [ ... ], ...
+        # Generate the dictionary of seeds, indexed by the diagonal (i - j)
         for i in range(m - k):
             for neighbour in k_word_neighbours[i]:
                 try:
-                    indices = query_index[neighbour.tuple]
+                    indices = query_index[neighbour.tup]
 
                     for j in indices:
                         if j - i in seeds:
@@ -667,7 +662,8 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
 
     k += 1
 
-    # Sort the seeds, and keep only the top d diagonals
+    # Sort the seeds, and keep only the d diagonals with the highest number
+    # of seeds on them
     sorted_seeds = {}
     counter = 0
     for k in sorted(seeds, key=lambda s: len(seeds[s]), reverse=True):
@@ -677,7 +673,7 @@ def generate_seeds(alphabet, scoring_matrix, sequence1, sequence2):
         counter += 1
 
     # Extend the seeds along the diagonals with a sufficiently large number
-    # of matches, giving us our High Scoring Pairs (HSPs)
+    # of seeds, giving us our High Scoring Pairs (HSPs)
     for key, val in sorted_seeds.items():
         for seed in val:
             left_score = 0
